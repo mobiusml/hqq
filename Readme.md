@@ -94,9 +94,18 @@ We provide a complete example to quantize ViT models that you can find in the ``
 If you want to quantize your own model architecture, you need to write a patching function that goes through all the linear layers and replaces them with ```HQQLinear```. You can follow the examples provided in ```hqq/models```.
 
 ### Models from HuggingFace Hub 🤗
-We provide pre-quantized LLama2 models that you can directly use from [HuggingFace Hub](https://huggingface.co/mobiuslabsgmbh): 
+We provide pre-quantized LLama2/ViT models that you can directly use from [Hugging Face Hub](https://huggingface.co/mobiuslabsgmbh):
 
-Here's an example:
+```
+#Install dependencies:
+pip install transformers[torch] datasets xformers accelerate
+
+#HF login:
+huggingface-cli login --token <your-token>
+```
+If you want to use the ViT models as well, don't forget to install timm via ```pip install timm```.
+
+LLama2 example: 
 ```Python
 import transformers
 from hqq.models.llama import LlamaHQQ
