@@ -2,7 +2,9 @@
 This folder contains the code to perform Half-Quadratic Quantization (<b>HQQ</b>) quantization and reproduce the results from our blogpost: https://mobiusml.github.io/hqq_blog/ 
 
 ### Installation 
-Clone the repo and run ```pip install .``` from this current folder. 
+You can install the core library directly via ```pip install git+https://github.com/mobiusml/hqq.git```. 
+
+Alternatively, clone the repo and run ```pip install .``` from this current folder. 
 
 ### Important ⚠️
 If you are using a virtual machine on the cloud, make sure you limit the number of threads to only those available. Otherwise, processing will be unusually slow, especially for the GPTQ benchmark. You can do that by limiting the OMP threads:
