@@ -116,7 +116,7 @@ tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
 #Load the model
 model = LlamaHQQ.from_quantized(model_id)
 ```
-### Citation
+### Citation 📜
 ```
 @misc{badri2023hqq,
 title  = {Half-Quadratic Quantization of Large Machine Learning Models},
