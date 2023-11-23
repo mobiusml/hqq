@@ -1,5 +1,5 @@
 ## Half-Quadratic Quantization (HQQ)
-This folder contains the code to perform Half-Quadratic Quantization (<b>HQQ</b>) quantization and reproduce the results from our blogpost: https://mobiusml.github.io/hqq/ 
+This folder contains the code to perform Half-Quadratic Quantization (<b>HQQ</b>) quantization and reproduce the results from our blogpost: https://mobiusml.github.io/hqq_blog/ 
 
 ### Installation 
 Clone the repo and run ```pip install .``` from this current folder. 
