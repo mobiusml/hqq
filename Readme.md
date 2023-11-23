@@ -93,7 +93,7 @@ We provide a complete example to quantize ViT models that you can find in the ``
 ### Quantize Custom Models 🗜️
 If you want to quantize your own model architecture, you need to write a patching function that goes through all the linear layers and replaces them with ```HQQLinear```. You can follow the examples provided in ```hqq/models```.
 
-### Models from HuggingFace Hub 🤗
+### Models from Hugging Face Hub 🤗
 We provide pre-quantized LLama2/ViT models that you can directly use from [Hugging Face Hub](https://huggingface.co/mobiuslabsgmbh):
 
 ```
