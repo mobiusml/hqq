@@ -24,10 +24,7 @@ hqq_layer = HQQLinear(your_linear_layer, quant_config, del_orig=True)
 ```
 
 ### LLama2 Quantization 🦙
-First, make sure to install the following dependencies:
-```pip install transformers[torch] datasets xformers accelerate```
-
-You can quantize a LLama2 HuggingFace model as follows:
+You can quantize a LLama Hugging Face model as follows:
 
 ```Python
 import torch, transformers
@@ -49,21 +46,19 @@ LlamaHQQ.quantize_model(model, quant_config=quant_config)
 
 You can save/load the quantized models as follows:
 ```Python
-#Save
+#Save the quantized model
 LlamaHQQ.save_quantized(model, save_dir=save_dir)
 #Load from local directory or Hugging Face Hub
 model = LlamaHQQ.from_quantized(save_dir)
 ```
 We provide a complete example to quantize LLama2 models that you can find in the ```llama2_benchmark``` folder. By default, it quantizes the LLama2-7B model with 4-bit precision and reports the perplexity on wikitext-2. 
 
-Additionally, to run the GPTQ and AWQ demos you need the following:
+To run the benchmark, make sure you install ```pip install datasets```. Additionally, to run the GPTQ and AWQ demos you need the following:
 ```pip install auto-gptq[triton]==0.4.2 autoawq==0.1.4 triton==2.0.0```
 
 Then set your HuggingFace 🤗 token via cli or inside the demo files, and you're all set!
 
 ### ViT Quantization 🖼️
-Make sure to install _timm_ via ```pip install timm``` first. 
-
 You can quantize a ViT model as follows:
 ```Python
 import timm, torch
@@ -81,7 +76,7 @@ ViTHQQ.quantize_model(model, quant_config=quant_config)
 
 You can also save/load the quantized ViT models as follows:
 ```Python
-#Save
+#Save the quantized model
 ViTHQQ.save_quantized(model, save_dir=save_dir)
 #Load from local directory or Hugging Face Hub
 model = ViTHQQ.from_quantized(save_dir)
@@ -89,7 +84,6 @@ model = ViTHQQ.from_quantized(save_dir)
 
 We provide a complete example to quantize ViT models that you can find in the ```vit_example``` folder. The script shows how to quantize a _timm_ ViT model and compares the dot score between the quantized and the original model predictions.
 
-  
 ### Quantize Custom Models 🗜️
 If you want to quantize your own model architecture, you need to write a patching function that goes through all the linear layers and replaces them with ```HQQLinear```. You can follow the examples provided in ```hqq/models```.
 
@@ -97,13 +91,9 @@ If you want to quantize your own model architecture, you need to write a patchin
 We provide pre-quantized LLama2/ViT models that you can directly use from [Hugging Face Hub](https://huggingface.co/mobiuslabsgmbh):
 
 ```
-#Install dependencies:
-pip install transformers[torch] datasets xformers accelerate
-
-#HF login:
+#First, login with your token:
 huggingface-cli login --token <your-token>
 ```
-If you want to use the ViT models as well, don't forget to install timm via ```pip install timm```.
 
 LLama2 example: 
 ```Python
