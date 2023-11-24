@@ -56,7 +56,7 @@ We provide a complete example to quantize LLama2 models that you can find in the
 To run the benchmark, make sure you install ```pip install datasets```. Additionally, to run the GPTQ and AWQ demos you need the following:
 ```pip install auto-gptq[triton]==0.4.2 autoawq==0.1.4 triton==2.0.0```
 
-Then set your HuggingFace 🤗 token via cli or inside the demo files, and you're all set!
+Then set your Hugging Face 🤗 token via cli or inside the demo files, and you're all set!
 
 ### ViT Quantization 🖼️
 You can quantize a ViT model as follows:
