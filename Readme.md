@@ -23,7 +23,7 @@ hqq_layer = HQQLinear(your_linear_layer, quant_config, del_orig=True)
 #del_orig=True will remove the original linear layer from memory
 ```
 
-### LLama2 Quantization 🦙
+### LLama Quantization 🦙
 You can quantize a LLama Hugging Face model as follows:
 
 ```Python
