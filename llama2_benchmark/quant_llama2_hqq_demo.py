@@ -17,8 +17,8 @@ tokenizer = transformers.AutoTokenizer.from_pretrained(model_id,        use_auth
 
 #Quantize the model
 ######################################################################################
-from hqq.core.quantize import hqq_base_quant_config
-from hqq.models.llama  import LlamaHQQ
+from hqq.core.quantize   import hqq_base_quant_config
+from hqq.models.llama_hf import LlamaHQQ
 
 #quant_config = hqq_base_quant_config(nbits=8, group_size=128)
 quant_config = hqq_base_quant_config(nbits=4, group_size=64)

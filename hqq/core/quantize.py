@@ -104,6 +104,7 @@ def zero_pad_row(tensor, num_rows, dtype=None):
 	out[:len(tensor)] = tensor
 	return W_q
 
+#Bit packing logic. format: pack/unpack_nBits_target-<uint8 or int32>
 class BitPack:
 	@staticmethod
 	def pack_8bit_u8(W_q):
@@ -185,6 +186,8 @@ class BitPack:
 						  ((W_q & 0b00000000000000000000000000001111))], axis=0)
 
 
+
+#Main HQQ Quantizer 
 class Quantizer:
 	SUPPORTED_BITS   = [8, 4, 3, 2]
 	optimize_weights = optimize_weights_proximal
@@ -252,6 +255,7 @@ class Quantizer:
 
 		return W_q, meta
 
+	#Main dequantization: bit_unpacking > (W_q - z)*s > reshape
 	@classmethod
 	def dequantize(cls, W_q, meta):
 		W_q_p = Quantizer.unpack[meta['packing']](W_q).half()

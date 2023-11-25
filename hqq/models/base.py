@@ -8,10 +8,12 @@ from abc import abstractmethod
 from huggingface_hub import snapshot_download
 from ..core.quantize import HQQLinear
 
+#Cleanup GPU vram
 def cleanup():
 	torch.cuda.empty_cache()
 	gc.collect()
 
+#Make sure file paths end with '/'
 def fix_path(path):
 	if(len(path)==0): return path
 	return path + '/' if (path[-1]!='/') else path 
@@ -89,14 +91,17 @@ class BaseHQQModel:
 	def get_ignore_layers(cls, model):
 		return []
 
+	#Save weights to disk
 	@classmethod
 	def save_weights(cls, weights, save_dir):
 		torch.save(weights, cls.get_weight_file(save_dir))
 
+	#Load weights from disk
 	@classmethod
 	def load_weights(cls, save_dir):
 		return torch.load(cls.get_weight_file(save_dir))
 
+	#Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
 	@classmethod
 	def quantize_model(cls, model, quant_config):
 		#Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
@@ -108,12 +113,9 @@ class BaseHQQModel:
 
 		cls.patch_model(model, lambda l: l.half().cuda(), _patch_linear, patch_params)
 
+	#Prepares model weights by iterating through modules. It might some parameters that are NOT modules like model.param1
 	@classmethod
-	def save_quantized(cls, model, save_dir, verbose=False):
-		#Save config
-		cls.cache_model(model, save_dir)
-
-		#Save weights
+	def serialize_weights(cls, model, verbose):
 		weights     = {}
 		ignore_keys = cls.get_ignore_layers(model)
 		for name, module in model.named_modules():
@@ -126,6 +128,18 @@ class BaseHQQModel:
 				if(verbose): 
 					print('Skipping', name)
 
+		return weights
+
+	#Main function to save a quantized model
+	@classmethod
+	def save_quantized(cls, model, save_dir, verbose=False):
+		#Save config
+		cls.cache_model(model, save_dir)
+
+		#Serialization
+		weights = cls.serialize_weights(model, verbose=verbose)
+
+		#Save
 		cls.save_weights(weights, save_dir)
 
 	@classmethod
@@ -144,6 +158,13 @@ class BaseHQQModel:
 
 		return save_dir
 
+
+	#This method is specfically designed in case we need to load some weights that are not part of any module
+	@classmethod
+	def post_module_load(cls, model, weights):
+		pass
+
+	#Main function to load an HQQ quantized model from either HF hub or locally
 	@classmethod
 	def from_quantized(cls, save_dir_or_hub, cache_dir=''):
 		#Get directory path
@@ -174,11 +195,14 @@ class BaseHQQModel:
 				module.load_state_dict(state_dict)
 			else:
 				for key in state_dict:
-					setattr(module, key, torch.nn.Parameter(state_dict[key]))
+					setattr(module, key, torch.nn.Parameter(state_dict[key], requires_grad=False))
 
 			return module 
 
+		#Load modules
 		cls.patch_model(model, _load_module, _load_module, dict([(k, None) for k in cls.get_linear_tags()]))
+		#Load other weights that are not part of any module
+		cls.post_module_load(model, weights) 
 		
 		return model
 

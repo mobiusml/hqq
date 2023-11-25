@@ -34,12 +34,10 @@ model_id  = "meta-llama/Llama-2-7b-hf"
 ######################
 model     = transformers.AutoModelForCausalLM.from_pretrained(model_id) 
 tokenizer = transformers.AutoTokenizer.from_pretrained(model_id) 
-
 #Quantize the model
 ######################
-from hqq.core.quantize import hqq_base_quant_config
-from hqq.models.llama  import LlamaHQQ
-
+from hqq.core.quantize   import hqq_base_quant_config
+from hqq.models.llama_hf import LlamaHQQ
 quant_config = hqq_base_quant_config(nbits=4, group_size=64)
 LlamaHQQ.quantize_model(model, quant_config=quant_config)
 ```
@@ -66,10 +64,9 @@ model_id = 'vit_large_patch14_clip_224.laion2b'
 
 #Load model on CPU
 model = timm.create_model(model_id, pretrained=True)
-
 #Quantize
-from hqq.core.quantize import hqq_base_quant_config
-from hqq.models.vit import ViTHQQ
+from hqq.core.quantize   import hqq_base_quant_config
+from hqq.models.vit_timm import ViTHQQ
 quant_config = hqq_base_quant_config(nbits=4, group_size=64)
 ViTHQQ.quantize_model(model, quant_config=quant_config)
 ```
@@ -98,7 +95,7 @@ huggingface-cli login --token <your-token>
 LLama2 example: 
 ```Python
 import transformers
-from hqq.models.llama import LlamaHQQ
+from hqq.models.llama_hf import LlamaHQQ
 
 model_id = 'mobiuslabsgmbh/Llama-2-7b-hf-4bit_g64-HQQ'
 #Load the tokenizer

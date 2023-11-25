@@ -44,6 +44,22 @@ class ViTHQQ(VitPatch, BaseHQQModel):
 	def get_ignore_layers(cls, model):
 		return ['', 'model', 'model.blocks'] + ['model.blocks.' + str(i) for i in range(len(model.blocks))]
 
+	#since cls_token and pos_embed are trainable parameters but are not part of any module, we need to add them manually 
+	#for saving
+	@classmethod
+	def serialize_weights(cls, model, verbose):
+		weights = super().serialize_weights(model, verbose) 
+		weights['cls_token'] = model.cls_token.data
+		weights['pos_embed'] = model.pos_embed.data
+		return weights
+
+	#and loading
+	@classmethod
+	def post_module_load(cls, model, weights):
+		super().post_module_load(model, weights) 
+		model.cls_token.data = weights['cls_token']
+		model.pos_embed.data = weights['pos_embed']
+		
 	#Save model architecture
 	@classmethod
 	def cache_model(cls, model, save_dir):
@@ -60,5 +76,5 @@ class ViTHQQ(VitPatch, BaseHQQModel):
 	def create_model(cls, save_dir):
 		with open(cls.get_config_file(save_dir), "r") as file:
 			config = json.load(file)
-		model = timm.create_model(config['architecture'] + '.' + config['tag'], pretrained=True)
+		model = timm.create_model(config['architecture'] + '.' + config['tag'], pretrained=False)
 		return model
