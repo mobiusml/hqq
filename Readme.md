@@ -23,8 +23,8 @@ hqq_layer = HQQLinear(your_linear_layer, quant_config, del_orig=True)
 #del_orig=True will remove the original linear layer from memory
 ```
 
-### LLama Quantization 🦙
-You can quantize a LLama Hugging Face model as follows:
+### Llama Quantization 🦙
+You can quantize a Llama Hugging Face model as follows:
 
 ```Python
 import torch, transformers
@@ -49,7 +49,7 @@ LlamaHQQ.save_quantized(model, save_dir=save_dir)
 #Load from local directory or Hugging Face Hub
 model = LlamaHQQ.from_quantized(save_dir)
 ```
-We provide a complete example to quantize LLama2 models that you can find in the ```llama2_benchmark``` folder. By default, it quantizes the LLama2-7B model with 4-bit precision and reports the perplexity on wikitext-2. 
+We provide a complete example to quantize Llama2 models that you can find in the ```llama2_benchmark``` folder. By default, it quantizes the Llama2-7B model with 4-bit precision and reports the perplexity on wikitext-2. 
 
 To run the benchmark, make sure you install ```pip install datasets```. Additionally, to run the GPTQ and AWQ demos you need the following:
 ```pip install auto-gptq[triton]==0.4.2 autoawq==0.1.4 triton==2.0.0```
@@ -85,14 +85,14 @@ We provide a complete example to quantize ViT models that you can find in the ``
 If you want to quantize your own model architecture, you need to write a patching function that goes through all the linear layers and replaces them with ```HQQLinear```. You can follow the examples provided in ```hqq/models```.
 
 ### Models from Hugging Face Hub 🤗
-We provide pre-quantized LLama2/ViT models that you can directly use from [Hugging Face Hub](https://huggingface.co/mobiuslabsgmbh):
+We provide pre-quantized Llama2/ViT models that you can directly use from [Hugging Face Hub](https://huggingface.co/mobiuslabsgmbh):
 
 ```
 #First, login with your token:
 huggingface-cli login --token <your-token>
 ```
 
-LLama2 example: 
+Llama2 example: 
 ```Python
 import transformers
 from hqq.models.llama_hf import LlamaHQQ
