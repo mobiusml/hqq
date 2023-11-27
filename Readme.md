@@ -23,6 +23,14 @@ hqq_layer = HQQLinear(your_linear_layer, quant_config, del_orig=True)
 #del_orig=True will remove the original linear layer from memory
 ```
 
+You can try to change the backend which could speed-up the runtime:
+```Python
+from hqq.core.quantize import HQQLinear, HQQBackend
+HQQLinear.backend = HQQBackend.PYTORCH         #Pytorch backend (default) 
+HQQLinear.backend = HQQBackend.PYTORCH_COMPILE #Compiled Pytorch (fastest)
+HQQLinear.backend = HQQBackend.ATEN            #C++ Aten/Torch backend
+```
+
 ### Llama Quantization 🦙
 You can quantize a Llama Hugging Face model as follows:
 

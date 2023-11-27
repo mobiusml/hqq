@@ -292,8 +292,25 @@ class Quantizer:
 	def cpu(cls, W_q, meta):
 		return Quantizer.to_ooplace(W_q, meta, device='cpu')
 
+
+#Main linear layer 
+try:
+	import hqq_aten
+except:
+	print('hqq_aten package not not installed.')
+	hqq_aten = None
+
+from enum import Enum
+class HQQBackend(Enum):
+	#Name of the forward functions
+	PYTORCH         = "forward_pytorch" 
+	PYTORCH_COMPILE = "forward_pytorch_compile"
+	ATEN            = "forward_aten"
+
 #Main linear layer 
 class HQQLinear(torch.nn.Module):
+	backend = HQQBackend.PYTORCH
+
 	def __init__(self, linear_layer, quant_config, del_orig=True):
 		super().__init__()
 		self.ready        = False
@@ -304,7 +321,7 @@ class HQQLinear(torch.nn.Module):
 			self.bias = None if (linear_layer.bias==None) else linear_layer.bias.half().cuda()
 		if(del_orig): del linear_layer
 		torch.cuda.empty_cache()
-
+		
 	def cuda(self):
 		if(self.in_gpu): return 
 		self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta)
@@ -362,13 +379,70 @@ class HQQLinear(torch.nn.Module):
 		for key in del_keys: del meta[key]
 		return W_est
 
-	@torch.no_grad()
 	def forward(self, x):
+		return getattr(self, HQQLinear.backend.value)(x)
+
+	@torch.no_grad()
+	def forward_pytorch(self, x):
 		W_est = self.dequantize()
 		out   = torch.matmul(x, W_est.t())
 		if(self.bias!=None): out += self.bias
 		del W_est
 		return out
+
+	##############################################
+	#Experimental
+	#############################################
+	@torch.no_grad()
+	@torch.compile()
+	def forward_pytorch_compile(self, x):
+		W_est = self.dequantize()
+		out   = torch.matmul(x, W_est.t())
+		if(self.bias!=None): out += self.bias
+		del W_est
+		return out
+
+	@torch.no_grad()
+	def forward_aten(self, x):
+		empt = torch.empty([0])
+		W_q  = self.W_q
+		meta = self.meta
+		bias = self.bias
+
+		W_q, W_s, W_z              = W_q,  empt if (meta['quant_scale']) else meta['scale'], empt if (meta['quant_zero']) else meta['zero']
+		W_shape,  W_group_size     = meta['shape'], meta['group_size']
+		W_nbits, W_axis, W_packing = meta['nbits'], meta['axis'], meta['packing']
+
+		if(meta['quant_scale']):
+			S_q, S_s, S_z              = meta['scale_q'],             meta['meta_scale']['scale'], meta['meta_scale']['zero']
+			S_shape, S_group_size      = meta['meta_scale']['shape'], meta['meta_scale']['group_size'] 
+			S_nbits, S_axis, S_packing = meta['meta_scale']['nbits'], meta['meta_scale']['axis'],  meta['meta_scale']['packing']
+		else:
+			S_q, S_s, S_z              = empt, empt, empt
+			S_shape, S_group_size      = meta['shape'], -1
+			S_nbits, S_axis, S_packing = -1, 0, ""
+
+		if(meta['quant_zero']):
+			Z_q, Z_s, Z_z              = meta['zero_q'],             meta['meta_zero']['scale'], meta['meta_zero']['zero']
+			Z_shape, Z_group_size      = meta['meta_zero']['shape'], meta['meta_zero']['group_size']
+			Z_nbits, Z_axis, Z_packing = meta['meta_zero']['nbits'], meta['meta_zero']['axis'],  meta['meta_zero']['packing']
+		else:
+			S_q, S_s, S_z              = empt, empt, empt
+			S_shape, S_group_size      = meta['shape'], -1
+			S_nbits, S_axis, S_packing = -1, 0, ""
+
+
+		S_group_size = 0 if (S_group_size==None) else S_group_size
+		Z_group_size = 0 if (Z_group_size==None) else Z_group_size
+
+		args = [x, bias if (bias is not None) else empt,
+				W_q, W_s, W_z, W_shape, W_group_size, W_nbits, W_axis, W_packing,
+				S_q, S_s, S_z, S_shape, S_group_size, S_nbits, S_axis, S_packing,
+				Z_q, Z_s, Z_z, Z_shape, Z_group_size, Z_nbits, Z_axis, Z_packing]
+
+		return hqq_aten.forward_with_quant(*args)
+
+
 
 def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=False):
 	assert nbits in Quantizer.SUPPORTED_BITS, "nbits value not supported. Check Quantizer.SUPPORTED_BITS."
