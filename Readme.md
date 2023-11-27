@@ -30,6 +30,11 @@ HQQLinear.backend = HQQBackend.PYTORCH         #Pytorch backend (default)
 HQQLinear.backend = HQQBackend.PYTORCH_COMPILE #Compiled Pytorch (fastest)
 HQQLinear.backend = HQQBackend.ATEN            #C++ Aten/Torch backend
 ```
+In order to use the ATEN backend, you need to build it via:
+```
+cd hqq/kernels;
+python setup.py install;
+```
 
 ### Llama Quantization 🦙
 You can quantize a Llama Hugging Face model as follows:
