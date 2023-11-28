@@ -3,6 +3,7 @@
 #include <string>
 #include <iostream>
 #include <pybind11/pybind11.h>
+#include <torch/script.h>
 
 inline torch::Tensor unpack_4bit_u8(torch::Tensor &W_q)
 {
@@ -14,13 +15,13 @@ inline torch::Tensor unpack_3bit_32(torch::Tensor &W_q) {
     {
         ((W_q & 0x38000000).__rshift__(27)),
         ((W_q & 0x07000000).__rshift__(24)),
-        ((W_q & 0x000C0000).__rshift__(21)),
-        ((W_q & 0x0001C000).__rshift__(18)),
-        ((W_q & 0x00003800).__rshift__(15)),
-        ((W_q & 0x00000700).__rshift__(12)),
-        ((W_q & 0x000000E0).__rshift__(9)),
-        ((W_q & 0x00000038).__rshift__(6)),
-        ((W_q & 0x0000001C).__rshift__(3)),
+        ((W_q & 0x00E00000).__rshift__(21)),
+        ((W_q & 0x001C0000).__rshift__(18)),
+        ((W_q & 0x00038000).__rshift__(15)),
+        ((W_q & 0x00007000).__rshift__(12)),
+        ((W_q & 0x00000E00).__rshift__(9)),
+        ((W_q & 0x000001C0).__rshift__(6)),
+        ((W_q & 0x00000038).__rshift__(3)),
         ((W_q & 0x00000007))
     }, 0);
 }
