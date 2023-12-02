@@ -1,10 +1,9 @@
-from .base import *
-
+from ..base import *
+from .base import BaseHQQTimmModel
 from tqdm import tqdm 
-import timm, json, os
 
 #Patch ViT functions
-class VitPatch(BasePatch):
+class VitCLIPPatch(BasePatch):
 	#These tags are used to specify the parameters of each layer type. For example, if you want to give different quantization parameters to different layers
 	@classmethod
 	def get_linear_tags(cls):
@@ -38,7 +37,7 @@ class VitPatch(BasePatch):
 			model.blocks[i].mlp.fc2   = patch_fct(model.blocks[i].mlp.fc2,   patch_params['mlp.fc2']) 
 
 
-class ViTHQQ(VitPatch, BaseHQQModel):
+class ViTCLIPHQQ(VitCLIPPatch, BaseHQQTimmModel):
 	#layers to ignore when saving the weights
 	@classmethod
 	def get_ignore_layers(cls, model):
@@ -60,21 +59,3 @@ class ViTHQQ(VitPatch, BaseHQQModel):
 		model.cls_token.data = weights['cls_token']
 		model.pos_embed.data = weights['pos_embed']
 		
-	#Save model architecture
-	@classmethod
-	def cache_model(cls, model, save_dir):
-		try:
-			os.makedirs(save_dir, exist_ok=True)
-		except Exception as error:
-			print(error)
-
-		with open(cls.get_config_file(save_dir), "w") as file:
-			json.dump(model.default_cfg, file)
-
-	#Create empty model
-	@classmethod
-	def create_model(cls, save_dir):
-		with open(cls.get_config_file(save_dir), "r") as file:
-			config = json.load(file)
-		model = timm.create_model(config['architecture'] + '.' + config['tag'], pretrained=False)
-		return model
