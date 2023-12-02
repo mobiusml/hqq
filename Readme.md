@@ -29,7 +29,7 @@ hqq_layer = HQQLinear(your_linear_layer, quant_config, del_orig=True)
 The quantization parameters are set as follows:
 
 - ```nbits``` (int): supports 8, 4, 3, 2 bits.
-- ```group_size``` (int): no restrictions as long as ```your_linear_layer.weight.numel()``` is divisible by the ```group_size```.
+- ```group_size``` (int): no restrictions as long as ```weight.numel()``` is divisible by the ```group_size```.
 - ```quant_zero``` (bool): if True, it quantizes the zero-point to 8-bit without grouping.
 - ```quant_scale``` (bool): if True, it quantizes the scaling factor to 8-bit with a group_size of 128.
 
@@ -45,7 +45,6 @@ cd hqq/kernels && python setup.py install;
 ```
 
 ### Supported Models
-Support for the following architectures is available:
 #### LLMs 
 - Llama (Hugging Face + VLLM) 🦙
 #### Vision 
