@@ -117,12 +117,21 @@ model.quantize_model(quant_config=quant_config)
 ######################
 HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)
 ```
+
 Additionally, you can use the quantized model in Langchain (requires ```pip install langchain```) as follows:
 
 ```Python
 from hqq.engine.vllm import LangchainVLLM
 llm = LangchainVLLM(max_new_tokens=10, top_p=0.90, temperature=0.6).set(model)
 print(llm("Who is Elon Musk?"))
+```
+
+You can save/load a quantized model as follows:
+```Python
+#Save the quantized model
+model.save_quantized(model, save_dir=save_dir)
+#Load from local directory or Hugging Face Hub
+model = HQQLLM.from_quantized(save_dir_or_hfhub)
 ```
 
 ### Timm 🖼️
