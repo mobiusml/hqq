@@ -1,8 +1,5 @@
-from .base import *
-
-from tqdm import tqdm 
-from accelerate import init_empty_weights
-import transformers
+from ..base import *
+from .base  import *
 
 #Patch LLama functions
 class LLamaPatch(BasePatch):
@@ -45,16 +42,11 @@ class LLamaPatch(BasePatch):
 			layers[i].mlp.down_proj    = patch_fct(layers[i].mlp.down_proj,    patch_params['mlp.down_proj'])
 
 
-class LlamaHQQ(LLamaPatch, BaseHQQModel):
+class LlamaHQQ(LLamaPatch, BaseHQQHFModel):
 	#layers to ignore when saving the weights
 	@classmethod
 	def get_ignore_layers(cls, model):
 		return ['', 'model', 'model.layers'] + ['model.layers.' + str(i) for i in range(len(model.model.layers))]
-
-	#Save model architecture
-	@classmethod
-	def cache_model(cls, model, save_dir):
-		model.config.save_pretrained(save_dir)
 
 	#Create empty model
 	@classmethod

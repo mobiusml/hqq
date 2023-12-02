@@ -98,8 +98,8 @@ class BaseHQQModel:
 
 	#Load weights from disk
 	@classmethod
-	def load_weights(cls, save_dir):
-		return torch.load(cls.get_weight_file(save_dir))
+	def load_weights(cls, save_dir, map_location=None):
+		return torch.load(cls.get_weight_file(save_dir), map_location=map_location)
 
 	#Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
 	@classmethod

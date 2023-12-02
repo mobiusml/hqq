@@ -1,191 +1,13 @@
 #Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
-
 import torch
 import numpy as np 
+
+from .utils    import *
+from .optimize import *
+from .bitpack  import BitPack 
 from tqdm import tqdm
-
-import gc
-def cleanup():
-    torch.cuda.empty_cache()
-    gc.collect()
-
-#Proximal solver || W - dequantize(quantize(W))||_p^p
-@torch.inference_mode()
-def optimize_weights_proximal(tensor, scale, zero, min_max, axis=0, device='cuda', opt_params={'lp_norm':0.7, 'beta':1e1, 'kappa':1.01, 'iters':20}, verbose=False):
-	lp_norm, beta, kappa, iters = opt_params['lp_norm'], opt_params['beta'], opt_params['kappa'], opt_params['iters']
-
-	dtype  = torch.float16 if (device=='cuda') else torch.float32
-	W_f    = tensor.to(dtype).to(device)
-	scale  = scale.to(dtype).to(device)
-	zero   = zero.to(dtype).to(device)
-
-	if(lp_norm==1):
-		shrink_op = lambda x, beta: torch.sign(x)*torch.nn.functional.relu(torch.abs(x) - 1./beta) 
-	else:
-		shrink_op = lambda x, beta,p=lp_norm: torch.sign(x)*torch.nn.functional.relu(torch.abs(x) - (1./beta)*torch.pow(torch.abs(x), p-1))
-
-	best_error = 1e4
-	for i in range(iters):
-		W_q   = torch.round(W_f*scale + zero).clamp(min_max[0], min_max[1])
-		W_r   = (W_q - zero)/scale
-		W_e   = shrink_op(W_f - W_r, beta)
-		zero  = torch.mean(W_q - (W_f - W_e)*scale, axis=axis, keepdim=True)
-		beta *= kappa
-
-		current_error = float(torch.abs(W_f - W_r).mean())
-		if(verbose): 
-			print(i, np.round(current_error, 6))
-		if(current_error < best_error):
-			best_error = current_error
-		else:
-			break
-
-	scale = scale.to(tensor.device)
-	zero  = zero.to(tensor.device)
-	del W_f, W_q, W_r, W_e
-	torch.cuda.empty_cache()
-
-	return scale, zero 
-
-#SGD solver  || W - dequantize(quantize(W))||_1 (p=1 only)
-def optimize_weights_autograd(tensor, scale, zero, min_max, axis=0, device='cuda', opt_params={'lr':2e-3, 'iters':2500}, verbose=False): 
-	W_f             = tensor.to(device) 
-	params          = {}
-	params['scale'] = torch.nn.Parameter(scale.float().to(device), requires_grad=True)
-	params['zero']  = torch.nn.Parameter(zero.float().to(device),  requires_grad=True)
-	optimizer       = torch.optim.AdamW([params[k] for k in params], lr=opt_params['lr'], betas=(0.9, 0.99), eps=1e-06, weight_decay=0.)
-
-	def _loss_fct(output, target):
-		return torch.mean(torch.abs(target - output)) #L1
-
-	def _fake_quant():
-		#Quantize
-		W_q = torch.round(W_f*params['scale'] + params['zero']).clamp(min_max[0], min_max[1])
-		#Dequantize
-		W_r = (W_q - params['zero'])/params['scale'] 
-		return W_r
-
-	with torch.no_grad():
-		_init_loss = _loss_fct(_fake_quant(), W_f).item()
-
-	def _step():
-		optimizer.zero_grad()
-		loss    = _loss_fct(_fake_quant(), W_f)
-		loss.backward()
-		optimizer.step()
-		return  np.round(loss.item(), 10)
-
-	for i in range(opt_params['iters']):
-		l = _step()
-		if(verbose and (i%100)==0): print(i, l)
-		
-	with torch.no_grad():
-		_final_loss = _loss_fct(_fake_quant(), W_f).item()
-
-	if(_final_loss<_init_loss):
-		for k in params: params[k] = params[k].data.detach().to(tensor.device)
-	else:
-		if(verbose): print('optimization failed...')
-		params = {'scale':scale, 'zero':zero}
-
-	del W_f	
-	torch.cuda.empty_cache()
-	return params['scale'], params['zero']
-
-def is_divisible(val1, val2):
-	return int(val2*np.ceil(val1/val2))==val1
-
-def make_multiple(val, multiple):
-	return int(multiple*np.ceil(val/float(multiple)))
-
-def zero_pad_row(tensor, num_rows, dtype=None):
-	out = torch.zeros([num_rows, tensor.shape[1]], device=tensor.device, dtype=tensor.dtype if (dtype is None) else dtype)
-	out[:len(tensor)] = tensor
-	return W_q
-
-#Bit packing logic. format: pack/unpack_nBits_target-<uint8 or int32>
-class BitPack:
-	@staticmethod
-	def pack_8bit_u8(W_q):
-		return W_q.to(torch.uint8)
-
-	@staticmethod
-	def unpack_8bit_u8(W_q):
-		return W_q
-
-	@staticmethod
-	def pack_4bit_u8(W_q): #uint8 > uint8/2
-		W_q = W_q.to(torch.uint8)
-		_step = int(len(W_q)/2)
-		return (W_q[:_step] << 4) | W_q[_step:]	
-
-	@staticmethod
-	def unpack_4bit_u8(W_q): #uint8/2 > uint8
-		return torch.cat([(W_q & 0b11110000) >> 4, W_q & 0b00001111], axis=0)
-
-	@staticmethod
-	def pack_2bit_u8(W_q): #uint8 > uint8/4
-		W_q = W_q.to(torch.uint8)
-		_step = int(len(W_q)/4)
-		return (W_q[:_step] << 6 | W_q[_step:2*_step] << 4 |  W_q[2*_step:3*_step] << 2 | W_q[3*_step:] )
-
-	@staticmethod
-	def unpack_2bit_u8(W_q):
-		return torch.cat([(W_q & 0b11000000) >> 6, (W_q & 0b00110000) >> 4, (W_q & 0b00001100) >> 2, W_q & 0b00000011], axis=0)
-
-	#int32 bit packing
-	###################
-	@staticmethod
-	def pack_3bit_32(W_q_in):
-		W_q = torch.zeros([int(10*np.ceil(W_q_in.shape[0]/10.)), W_q_in.shape[1]], device=W_q_in.device, dtype=torch.int32)
-		W_q[:len(W_q_in)] = W_q_in
-		_step = int(len(W_q)/10)
-		W_q = (W_q[:_step] << 27) | (W_q[_step:_step*2] << 24) | (W_q[_step*2:_step*3] << 21) | (W_q[_step*3:_step*4] << 18) | (W_q[_step*4:_step*5] << 15) | (W_q[_step*5:_step*6] << 12) | (W_q[_step*6:_step*7] << 9) | (W_q[7*_step:_step*8] << 6) | (W_q[_step*8:_step*9] << 3) | (W_q[_step*9:]) 
-		return W_q
-
-	@staticmethod
-	def unpack_3bit_32(W_q):
-		return torch.cat([((W_q & 0b00111000000000000000000000000000) >> 27),
-						  ((W_q & 0b00000111000000000000000000000000) >> 24),
-						  ((W_q & 0b00000000111000000000000000000000) >> 21),
-						  ((W_q & 0b00000000000111000000000000000000) >> 18),
-						  ((W_q & 0b00000000000000111000000000000000) >> 15),
-						  ((W_q & 0b00000000000000000111000000000000) >> 12),
-						  ((W_q & 0b00000000000000000000111000000000) >> 9),
-						  ((W_q & 0b00000000000000000000000111000000) >> 6),
-						  ((W_q & 0b00000000000000000000000000111000) >> 3),
-						  ((W_q & 0b00000000000000000000000000000111))], axis=0)
-
-	@staticmethod
-	def pack_3bit2bit_u8(W_q):
-		assert is_divisible(len(W_q),3), "Input should have shape[0] divisble by 3 to use mixed 3-2bit bit packing"
-		_step = int(len(W_q)/3)
-		return (W_q[:_step] << 6 | W_q[1*_step:2*_step] << 3 | W_q[2*_step:] )
-
-	@staticmethod
-	def unpack_3bit2bit_u8(W_q):
-		return torch.cat([(W_q & 0b11100000) >> 6, (W_q & 0b00011100) >> 3, W_q & 0b00000011], axis=0)
-
-	@staticmethod
-	def pack_4bit_32(W_q):
-		W_q = W_q.to(torch.int32)
-		_step = int(len(W_q)/8)
-		W_q = (W_q[:_step] << 28) | (W_q[_step:_step*2] << 24) | (W_q[_step*2:_step*3] << 20) | (W_q[_step*3:_step*4] << 16) | (W_q[_step*4:_step*5] << 12) | (W_q[_step*5:_step*6] << 8) | (W_q[_step*6:_step*7] << 4) | (W_q[_step*7:])
-		return W_q
-
-	@staticmethod
-	def unpack_4bit_32(W_q):
-		return torch.cat([((W_q & 0b11110000000000000000000000000000) >> 28),
-						  ((W_q & 0b00001111000000000000000000000000) >> 24),
-						  ((W_q & 0b00000000111100000000000000000000) >> 20),
-						  ((W_q & 0b00000000000011110000000000000000) >> 16),
-						  ((W_q & 0b00000000000000001111000000000000) >> 12),
-						  ((W_q & 0b00000000000000000000111100000000) >> 8),
-						  ((W_q & 0b00000000000000000000000011110000) >> 4),
-						  ((W_q & 0b00000000000000000000000000001111))], axis=0)
-
-
+from termcolor import colored
 
 #Main HQQ Quantizer 
 class Quantizer:
@@ -285,8 +107,8 @@ class Quantizer:
 		return W_q_c, meta_c
 
 	@classmethod
-	def cuda(cls, W_q, meta):
-		return Quantizer.to_inplace(W_q, meta, device='cuda')
+	def cuda(cls, W_q, meta, device_n=0):
+		return Quantizer.to_inplace(W_q, meta, device='cuda:' + str(device_n))
 
 	@classmethod
 	def cpu(cls, W_q, meta):
@@ -297,7 +119,7 @@ class Quantizer:
 try:
 	import hqq_aten
 except:
-	print('hqq_aten package not not installed.')
+	print(colored('hqq_aten package not installed. HQQBackend.ATEN backend will not work unless you install the hqq_aten lib in hqq/kernels.', 'cyan'))
 	hqq_aten = None
 
 from enum import Enum
@@ -309,26 +131,31 @@ class HQQBackend(Enum):
 
 #Main linear layer 
 class HQQLinear(torch.nn.Module):
-	backend = HQQBackend.PYTORCH
+	backend = HQQBackend.PYTORCH #Default
 
 	def __init__(self, linear_layer, quant_config, del_orig=True):
 		super().__init__()
 		self.ready        = False
 		self.in_gpu       = False
 		self.quant_config = quant_config
+		self.set_backend(HQQLinear.backend) #Default backend
 		if(linear_layer is not None):
-			self.quantize(linear_layer.weight.data, **quant_config)
 			self.bias = None if (linear_layer.bias==None) else linear_layer.bias.half().cuda()
+			self.quantize(linear_layer.weight.data, **quant_config)
 		if(del_orig): del linear_layer
 		torch.cuda.empty_cache()
 		
-	def cuda(self):
+	def cuda(self, device_n=0):
 		if(self.in_gpu): return 
-		self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta)
+		self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta, device_n)
 		if(self.meta['quant_scale']):
-			self.meta['scale_q'] , self.meta['meta_scale'] = Quantizer.cuda(self.meta['scale_q'], self.meta['meta_scale'])
+			self.meta['scale_q'] , self.meta['meta_scale'] = Quantizer.cuda(self.meta['scale_q'], self.meta['meta_scale'], device_n)
 		if(self.meta['quant_zero']):
-			self.meta['zero_q'] , self.meta['meta_zero']   = Quantizer.cuda(self.meta['zero_q'], self.meta['meta_zero'])
+			self.meta['zero_q'] , self.meta['meta_zero']   = Quantizer.cuda(self.meta['zero_q'], self.meta['meta_zero'], device_n)
+
+		if(self.bias is not None):
+			self.bias = self.bias.half().cuda(device_n)
+
 		self.in_gpu = True
 
 	def to(self, device):
@@ -379,8 +206,10 @@ class HQQLinear(torch.nn.Module):
 		for key in del_keys: del meta[key]
 		return W_est
 
-	def forward(self, x):
-		return getattr(self, HQQLinear.backend.value)(x)
+	@classmethod
+	def set_backend(cls, backend: HQQBackend):
+		HQQLinear.backend = backend
+		cls.forward       = getattr(cls, HQQLinear.backend.value)
 
 	@torch.no_grad()
 	def forward_pytorch(self, x):
@@ -443,7 +272,6 @@ class HQQLinear(torch.nn.Module):
 		return hqq_aten.forward_with_quant(*args)
 
 
-
 def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=False):
 	assert nbits in Quantizer.SUPPORTED_BITS, "nbits value not supported. Check Quantizer.SUPPORTED_BITS."
 	assert is_divisible(group_size, 8), "Invalid group_size param: the value should be a multiple of 8." 
@@ -451,3 +279,6 @@ def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=F
 	scale_quant_params  = {'nbits':8,    'channel_wise':True,  'group_size':128,        'optimize':False} if (quant_scale) else None
 	zero_quant_params   = {'nbits':8,    'channel_wise':False, 'group_size':None,       'optimize':False} if (quant_zero)  else None
 	return {'weight_quant_params':weight_quant_params, 'scale_quant_params':scale_quant_params, 'zero_quant_params':zero_quant_params}
+
+#Alias: follow similar Auto-GPTQ naming
+BaseQuantizeConfig = hqq_base_quant_config

@@ -1,8 +1,5 @@
-import numpy as np 
-import timm, torch 
-
-from hqq.core.quantize import hqq_base_quant_config
-from hqq.models.vit import ViTHQQ
+from hqq.engine.timm import HQQtimm
+from hqq.core.quantize import *
 
 #Model 
 #model_id = 'vit_base_patch32_clip_224.laion2b' #ViT-B-32
@@ -10,25 +7,27 @@ from hqq.models.vit import ViTHQQ
 model_id = 'vit_huge_patch14_clip_224.laion2b' #ViT-H-14
  
 #Load model (on CPU)
-model = timm.create_model(model_id, pretrained=True)
+model = HQQtimm.create_model(model_id, pretrained=True)
 
 #Quantize settings
-#quant_config = hqq_base_quant_config(nbits=8, group_size=128)
-quant_config = hqq_base_quant_config(nbits=4, group_size=64)
-#quant_config = hqq_base_quant_config(nbits=3, group_size=64)
-#quant_config = hqq_base_quant_config(nbits=2, group_size=16, quant_scale=True)
+#quant_config = BaseQuantizeConfig(nbits=8, group_size=128)
+quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
+#quant_config = BaseQuantizeConfig(nbits=3, group_size=64)
+#quant_config = BaseQuantizeConfig(nbits=2, group_size=16, quant_scale=True)
 
 #Quantize
-ViTHQQ.quantize_model(model, quant_config=quant_config)
+model.quantize_model(quant_config=quant_config)
 
 ###############################################################
 # #Save model
 # save_dir = "repo/" + model_id
-# ViTHQQ.save_quantized(model, save_dir=save_dir)
+# model.save_quantized(model, save_dir=save_dir)
 
 # #Load model
-# model = ViTHQQ.from_quantized(save_dir) 
+# model = HQQtimm.from_quantized(save_dir) 
 ###############################################################
+import timm, torch
+import numpy as np 
 
 #Load reference model to compare with
 model_ref = timm.create_model(model_id, pretrained=True)
