@@ -266,10 +266,12 @@ class LLamaPatch(BasePatch):
 
         layers = base_model.layers
         for i in tqdm(range(len(base_model.layers)), disable=not verbose):
-            layers[i].self_attn.attn           = patch_fct(layers[i].self_attn.attn) #rotary embed 
-            layers[i].mlp.act_fn               = patch_fct(layers[i].mlp.act_fn)
-            layers[i].input_layernorm          = patch_fct(layers[i].input_layernorm)
-            layers[i].post_attention_layernorm = patch_fct(layers[i].post_attention_layernorm)
+            #rotary embed 
+            layers[i].self_attn.attn.rotary_emb.cos_sin_cache = torch.nn.Parameter(layers[i].self_attn.attn.rotary_emb.cos_sin_cache, requires_grad=False)
+            layers[i].self_attn.attn.rotary_emb = patch_fct(layers[i].self_attn.attn.rotary_emb) 
+            layers[i].mlp.act_fn                = patch_fct(layers[i].mlp.act_fn)
+            layers[i].input_layernorm           = patch_fct(layers[i].input_layernorm)
+            layers[i].post_attention_layernorm  = patch_fct(layers[i].post_attention_layernorm)
 
     @classmethod
     def patch_linearlayers(cls, model, patch_fct, patch_params, verbose=True):
@@ -289,7 +291,13 @@ class LlamaHQQ(LLamaPatch, BaseHQQVLLMModel):
     #layers to ignore when saving the weights
     @classmethod
     def get_ignore_layers(cls, model):
-        return ['', 'model', 'model.layers'] + ['model.layers.' + str(i) for i in range(len(model.model.layers))]
+        _tags  = ['', 'model', 'model.layers']
+        _tags += ['model.layers.' + str(i) for i in range(len(model.model.layers))]
+        _tags += ['model.layers.' + str(i) + '.self_attn' for i in range(len(model.model.layers))] 
+        #_tags += ['model.layers.' + str(i) + '.self_attn.attn.rotary_emb' for i in range(len(model.model.layers))] 
+        _tags += ['model.layers.' + str(i) + '.self_attn.attn' for i in range(len(model.model.layers))] 
+        _tags += ['model.layers.' + str(i) + '.mlp' for i in range(len(model.model.layers))] 
+        return _tags
 
     #Create empty model
     @classmethod
