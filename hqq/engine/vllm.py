@@ -77,7 +77,8 @@ class HQQLLM(_Parent, HQQWrapper):
 
 	#This requires custom loading because VLLM requires a str input model to initalize the workers
 	@classmethod
-	def from_quantized(cls, save_dir_or_hub, cache_dir=''):
+	def from_quantized(cls, save_dir_or_hub, cache_dir='', tensor_parallel_size=1):
+		assert tensor_parallel_size==1, "Only single GPU is supported."
 		#Both local and hub-support
 		save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub)
 		config   = transformers.AutoConfig.from_pretrained(save_dir)
@@ -85,8 +86,7 @@ class HQQLLM(_Parent, HQQWrapper):
 		cls._check_arch_support(arch_key)
 
 		#Trick to initialize the tokenizer and a dummy model inside a VLLM instance
-		instance = cls(model=_ARCH_TO_DEFAULT[arch_key], force_skip=True) 
-
+		instance = cls(model=_ARCH_TO_DEFAULT[arch_key], force_skip=True, tensor_parallel_size=1) 
 		workers  = instance.llm_engine.workers
 		for i in range(len(workers)):
 			workers[i].model = cls._get_hqq_class(arch_key).from_quantized_single_worker(save_dir_or_hub=save_dir_or_hub, cache_dir=cache_dir, device='cuda:'+str(i))
