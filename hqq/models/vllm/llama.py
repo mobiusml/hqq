@@ -294,7 +294,6 @@ class LlamaHQQ(LLamaPatch, BaseHQQVLLMModel):
         _tags  = ['', 'model', 'model.layers']
         _tags += ['model.layers.' + str(i) for i in range(len(model.model.layers))]
         _tags += ['model.layers.' + str(i) + '.self_attn' for i in range(len(model.model.layers))] 
-        #_tags += ['model.layers.' + str(i) + '.self_attn.attn.rotary_emb' for i in range(len(model.model.layers))] 
         _tags += ['model.layers.' + str(i) + '.self_attn.attn' for i in range(len(model.model.layers))] 
         _tags += ['model.layers.' + str(i) + '.mlp' for i in range(len(model.model.layers))] 
         return _tags
