@@ -134,7 +134,9 @@ model.save_quantized(model, save_dir=save_dir)
 model = HQQLLM.from_quantized(save_dir_or_hfhub)
 ```
 
-Note: The VLLM backend is experimental and was only tested on a single GPU. 
+Notes:
+- The VLLM backend only works with a single GPU for now.
+- Only VLLM models created via ```save_quantized``` can be loaded with ```HQQLLM.from_quantized```.
 
 ### Timm 🖼️
 Timm backend is also supported. Here's how you use it:
