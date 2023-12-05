@@ -93,6 +93,13 @@ model = AutoModelForCausalLM.from_pretrained(model_id)
 HQQModelForCausalLM.quantize_model_(model, quant_config=quant_config)
 ```
 
+If you want to quantize your custom Hugging Face Llama model, you can do the following:
+```Python
+from hqq.models.hf.llama import LlamaHQQ
+model = YourCustomLlamaForCausalLM.from_pretrained(model_id, cache_dir=cache_dir)
+LlamaHQQ.quantize_model(model, quant_config=quant_config)
+```
+
 ### VLLM 🚀
 By default, VLLM is not installed to avoid CUDA version problems. Make sure you install the right version that matches your CUDA settings: 
 https://docs.vllm.ai/en/latest/getting_started/installation.html 
