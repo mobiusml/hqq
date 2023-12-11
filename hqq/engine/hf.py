@@ -1,9 +1,13 @@
 import transformers, json
 from typing import Dict
 
-from ..models.hf.llama import LlamaHQQ
 _HQQ_REGISTRY = {}
+
+from ..models.hf.llama import LlamaHQQ
 _HQQ_REGISTRY['LlamaForCausalLM'] = LlamaHQQ
+
+from hqq.models.hf.mixtral import MixtralHQQ
+_HQQ_REGISTRY['MixtralForCausalLM'] = MixtralHQQ
 
 #Alias 
 AutoTokenizer = transformers.AutoTokenizer
