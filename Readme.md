@@ -47,6 +47,8 @@ cd hqq/kernels && python setup.py install;
 ### Supported Models
 #### LLMs 
 - Llama (Hugging Face + VLLM) 🦙
+- Mixtral-8x7B (Hugging Face)
+
 #### Vision 
 - ViT-CLIP (timm) 🖼️
 
@@ -91,13 +93,6 @@ from transformers import AutoModelForCausalLM
 model = AutoModelForCausalLM.from_pretrained(model_id) 
 #Quantize
 HQQModelForCausalLM.quantize_model_(model, quant_config=quant_config)
-```
-
-If you want to quantize your custom Hugging Face Llama model, you can do the following:
-```Python
-from hqq.models.hf.llama import LlamaHQQ
-model = YourCustomLlamaForCausalLM.from_pretrained(model_id, cache_dir=cache_dir)
-LlamaHQQ.quantize_model(model, quant_config=quant_config)
 ```
 
 ### VLLM 🚀
