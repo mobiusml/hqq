@@ -70,3 +70,8 @@ class HQQWrapper:
 
 		cls._make_quantizable(model, quantized=True)
 		return model
+
+	@classmethod
+	def get_linear_tags(cls, model):
+		return cls._get_hqq_class(model).get_linear_tags()
+

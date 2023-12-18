@@ -1,7 +1,7 @@
 #Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import torch 
-import gc, os 
+import gc, os, copy
 from tqdm import tqdm 
 from abc import abstractmethod
 
@@ -105,11 +105,17 @@ class BaseHQQModel:
 	@classmethod
 	def quantize_model(cls, model, quant_config):
 		#Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
-		patch_params = dict([(k, quant_config) for k in cls.get_linear_tags()])
+		if(True in [(key in cls.get_linear_tags()) for key in quant_config.keys()]): 
+			#If the user doesn't specify a key from get_linear_tags, the layer is not quantized via (key, None)
+			patch_params = dict([(key, None) for key in cls.get_linear_tags()])
+			patch_params.update(quant_config)
+		else:
+			#Same quant_config for all layers
+			patch_params = dict([(k, quant_config) for k in cls.get_linear_tags()])
 
 		#We replace the nn.Linear layers with HQQLinear
 		def _patch_linear(linear_layer, quant_config):
-			return HQQLinear(linear_layer, quant_config) if (quant_config is not None) else linear_layer
+			return HQQLinear(linear_layer, quant_config) if (quant_config is not None) else linear_layer.half().cuda()
 
 		cls.patch_model(model, lambda l: l.half().cuda(), _patch_linear, patch_params)
 

@@ -173,6 +173,20 @@ model = HQQtimm.from_quantized(save_dir_or_hfhub)
 ### Quantize Custom Models 🗜️
 If you want to quantize your own model architecture, you need to write a patching logic that goes through all the linear layers and replaces them with ```HQQLinear```. You can follow the examples provided in ```hqq/models```.
 
+### Custom Quantization Configurations ⚙️
+You can specify different quantization configs for different layers by feeding a dictionary in the form ```linear_tag: BaseQuantizeConfig()```, The following example uses 4-bit for ```self_attn.v_proj``` and 2-bit for the rest of the layers:
+```Python
+from hqq.core.quantize import *
+linear_tags  = HQQModelForCausalLM.get_linear_tags(model) #List of tags for the linear layers of the model
+q2_config    = BaseQuantizeConfig(nbits=2, group_size=16, quant_scale=True) #2-bit config
+q4_config    = BaseQuantizeConfig(nbits=4, group_size=64, quant_zero=True, quant_scale=False) #4-bit config
+quant_config = dict([(k, q2_config) for k in linear_tags])
+quant_config['self_attn.v_proj'] = q4_config
+
+#Quantize 
+model.quantize_model(quant_config=quant_config)
+```
+
 ### Examples 
 We provide a variety of examples demonstrating model quantization across different backends within the ```examples```  directory.
 
