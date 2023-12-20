@@ -5,6 +5,8 @@ This folder contains the code to perform Half-Quadratic Quantization (<b>HQQ</b>
 <b>HQQ</b> is a fast and accurate model quantizer that skips the need for calibration data. It's super simple to implement (just a few lines of code for the optimizer). It can crunch through quantizing the Llama2-70B model in only 4 minutes! 🚀
 
 ### Installation 
+First, make sure you have a Pytorch 2 version that matches your CUDA version: https://pytorch.org/
+
 You can install hqq via  ```pip install hqq```. 
 
 To get the latest version, you can install the core library directly via ```pip install git+https://github.com/mobiusml/hqq.git```. 
