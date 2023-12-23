@@ -100,7 +100,7 @@ HQQModelForCausalLM.quantize_model_(model, quant_config=quant_config)
 ```
 
 ### VLLM 🚀
-By default, VLLM is not installed to avoid CUDA version problems. Make sure you install the right version that matches your CUDA settings: 
+By default, VLLM is not installed to avoid CUDA version problems. Make sure you install the right version that matches your CUDA settings (vllm <= 0.2.2): 
 https://docs.vllm.ai/en/latest/getting_started/installation.html 
 
 After installation, you can quantize VLLM models as follows:
