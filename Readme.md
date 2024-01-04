@@ -191,6 +191,36 @@ quant_config['self_attn.v_proj'] = q4_config
 model.quantize_model(quant_config=quant_config)
 ```
 
+### LoRA Training
+You can use HQQ for lora training as follows:
+```Python
+#First, quantize/load a quantized HQQ model the
+from hqq.core.peft import PeftUtils
+
+base_lora_params = {'lora_type':'default', 'r':32, 'lora_alpha':64, 'dropout':0.05, 'train_dtype':torch.bfloat16}
+lora_params      = {'self_attn.q_proj': base_lora_params,
+			        'self_attn.k_proj': base_lora_params,
+			        'self_attn.v_proj': base_lora_params,
+			        'self_attn.o_proj': base_lora_params,
+			        'mlp.gate_proj'   : None,
+			        'mlp.up_proj'     : None,
+			        'mlp.down_proj'   : None}
+
+
+PeftUtils.add_lora(model, lora_params)
+
+#Optional: faster but might not work on older GPUs
+HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP_COMPILE)
+
+#Train ....
+
+#Convert lora weights to the same model dtype for faster inference
+model.eval()
+PeftUtils.cast_lora_weights(model, dtype=torch.half)
+```
+
+We provide a complete example to train a model with HQQ/LoRA that you can find in ```examples/lora/train_hqq_lora_example.py```.
+
 ### Examples 
 We provide a variety of examples demonstrating model quantization across different backends within the ```examples```  directory.
 

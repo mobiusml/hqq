@@ -34,6 +34,7 @@ class HQQModelForCausalLM(_Parent, HQQWrapper):
 		model.to             = lambda *args, **kwargs: model if(quantized) else model.to
 		model.float          = lambda *args, **kwargs: model if(quantized) else model.float
 		model.half           = lambda *args, **kwargs: model if(quantized) else model.half
+		model.base_class     = cls._get_hqq_class(model)
 
 	#Force loading the model on CPU and unquantized 
 	@classmethod

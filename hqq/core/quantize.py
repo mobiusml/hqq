@@ -27,7 +27,7 @@ class Quantizer:
 			  '2bit_u8':BitPack.unpack_2bit_u8}
 
 	@classmethod
-	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0):
+	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True):
 		assert nbits in Quantizer.SUPPORTED_BITS, "nbits=" + str(nbits) + " not supported."
 		assert axis in [0, 1], "axis should be either 0 or 1"
 		if(group_size is not None):
@@ -69,7 +69,10 @@ class Quantizer:
 		meta = {'nbits':nbits, 'group_size':group_size, 'shape':shape, 'scale':1./scale, 'zero':zero, 'axis':axis, 'packing':Quantizer.bit_to_packing[nbits]}
 
 		#Pack bits
-		W_q  = Quantizer.pack[meta['packing']](W_q)
+		if(bitpack):
+			W_q  = Quantizer.pack[meta['packing']](W_q)
+		else:
+			meta['packing'] = None
 
 		#cleanup
 		del W, _min, _max 
@@ -80,11 +83,13 @@ class Quantizer:
 	#Main dequantization: bit_unpacking > (W_q - z)*s > reshape
 	@classmethod
 	def dequantize(cls, W_q, meta):
-		W_q_p = Quantizer.unpack[meta['packing']](W_q).half()
-		if((meta['group_size'] is not None) and (meta['nbits']==3)):
-			W_q_p = W_q_p[:meta['group_size']] if (meta['axis']==0) else W_q_p[:,:meta['group_size']]
-		W_r = ((W_q_p - meta['zero'])*meta['scale']).reshape(meta['shape']) 
-		del W_q_p
+		if(meta['packing']):
+			W_r = Quantizer.unpack[meta['packing']](W_q).half()
+			if((meta['group_size'] is not None) and (meta['nbits']==3)):
+				W_r = W_r[:meta['group_size']] if (meta['axis']==0) else W_r[:,:meta['group_size']]
+		else:
+			W_r = W_q
+		W_r = ((W_r - meta['zero'])*meta['scale']).reshape(meta['shape']) 
 		return W_r
 
 	@classmethod
@@ -119,15 +124,113 @@ class Quantizer:
 try:
 	import hqq_aten
 except:
-	print(colored('hqq_aten package not installed. HQQBackend.ATEN backend will not work unless you install the hqq_aten lib in hqq/kernels.', 'cyan'))
+	#print(colored('hqq_aten package not installed. HQQBackend.ATEN backend will not work unless you install the hqq_aten lib in hqq/kernels.', 'cyan'))
 	hqq_aten = None
 
 from enum import Enum
 class HQQBackend(Enum):
 	#Name of the forward functions
-	PYTORCH         = "forward_pytorch" 
-	PYTORCH_COMPILE = "forward_pytorch_compile"
-	ATEN            = "forward_aten"
+	PYTORCH                  = "forward_pytorch" 
+	PYTORCH_COMPILE          = "forward_pytorch_compile"
+	PYTORCH_BACKPROP         = "forward_pytorch_backprop" 
+	PYTORCH_BACKPROP_COMPILE = "forward_pytorch_backprop_compile" 
+	ATEN                     = "forward_aten"
+
+
+#No cache: less memory, slower
+class HQQMatmulNoCacheDeq(torch.autograd.Function):
+
+	@staticmethod
+	def forward(x, dequantize, bias):
+		out = torch.matmul(x, dequantize().t())
+		if(bias!=None): out += bias
+		return out
+
+	@staticmethod
+	def setup_context(ctx, inputs, outputs):
+		x, dequantize, bias = inputs
+		ctx.save_for_backward(x, bias)
+		ctx.dequantize = dequantize
+
+	@staticmethod
+	def backward(ctx, grad_output):
+		x, bias    = ctx.saved_tensors
+		dtype_out  = grad_output.dtype
+
+		grad_input = grad_weight = grad_bias = None
+
+		if ctx.needs_input_grad[0]:
+			grad_input = torch.matmul(grad_output, ctx.dequantize()) 
+
+		# weight grad for frozen quantized weights not defined
+		# if ctx.needs_input_grad[1]:
+		# 	grad_weight = torch.matmul(grad_output.t(), x)
+
+		if bias is not None and ctx.needs_input_grad[2]:
+			grad_bias = grad_output.sum(0)
+
+		return grad_input, grad_weight, grad_bias
+
+
+class HQQMatmulNoCacheMul(torch.autograd.Function):
+
+	@staticmethod
+	def forward(x, matmul, bias):
+		out = matmul(x, transpose=True)
+		if(bias!=None): out += bias
+		return out
+
+	@staticmethod
+	def setup_context(ctx, inputs, outputs):
+		x, matmul, bias = inputs
+		ctx.save_for_backward(x, bias)
+		ctx.matmul = matmul
+
+	@staticmethod
+	def backward(ctx, grad_output):
+		x, bias    = ctx.saved_tensors
+
+		grad_input = grad_weight = grad_bias = None
+
+		if ctx.needs_input_grad[0]:
+			grad_input = ctx.matmul(grad_output, transpose=False)
+
+		# weight grad for frozen quantized weights not defined
+		# if ctx.needs_input_grad[1]:
+		# 	grad_weight = torch.matmul(grad_output.t(), x)
+
+		if bias is not None and ctx.needs_input_grad[2]:
+			grad_bias = grad_output.sum(0)
+
+		return grad_input, grad_weight, grad_bias
+
+#Cache dequantized tensor: Faster but needs more memory
+class HQQMatmulCachedDeq(torch.autograd.Function):
+
+	@staticmethod
+	def forward(ctx, x, hqq_layer, bias):
+		weight_tmp = hqq_layer.dequantize() 
+		out        = torch.matmul(x, weight_tmp.t())
+		if(bias!=None): out += bias
+
+		ctx.save_for_backward(x, bias, weight_tmp)
+		return out
+
+	@staticmethod
+	def backward(ctx, grad_output):
+		x, bias, weight_tmp = ctx.saved_tensors
+
+		grad_input = grad_weight = grad_bias = None
+
+		if ctx.needs_input_grad[0]:
+			grad_input = torch.matmul(grad_output, weight_tmp) 
+
+		del weight_tmp
+
+		if bias is not None and ctx.needs_input_grad[2]:
+			grad_bias = grad_output.sum(0)
+
+		return grad_input, grad_weight, grad_bias
 
 #Main linear layer 
 class HQQLinear(torch.nn.Module):
@@ -137,14 +240,24 @@ class HQQLinear(torch.nn.Module):
 		super().__init__()
 		self.ready        = False
 		self.in_gpu       = False
+		self.device       = None
+		self.bias         = None
 		self.quant_config = quant_config
 		self.set_backend(HQQLinear.backend) #Default backend
+
 		if(linear_layer is not None):
 			self.bias = None if (linear_layer.bias==None) else linear_layer.bias.half().cuda()
 			self.quantize(linear_layer.weight.data, **quant_config)
+
 		if(del_orig): del linear_layer
 		torch.cuda.empty_cache()
-		
+
+	#Set backends
+	@classmethod
+	def set_backend(cls, backend: HQQBackend):
+		HQQLinear.backend = backend
+		cls.forward       = getattr(cls, backend.value)
+
 	def cuda(self, device_n=0):
 		if(self.in_gpu): return 
 		self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta, device_n)
@@ -156,12 +269,14 @@ class HQQLinear(torch.nn.Module):
 		if(self.bias is not None):
 			self.bias = self.bias.half().cuda(device_n)
 
+		self.W_q    = torch.nn.Parameter(self.W_q, requires_grad=False)
+		self.device = self.W_q.device
 		self.in_gpu = True
 
-	def to(self, device):
+	def to(self, *args, **kwargs):
 		pass
 
-	def half(self):
+	def half(self, *args, **kwargs):
 		return self 
 
 	def state_dict(self):
@@ -175,9 +290,12 @@ class HQQLinear(torch.nn.Module):
 		if(self.in_gpu==False): self.cuda()
 		self.ready  = True
 
+	@torch.inference_mode()
 	def quantize(self, W, weight_quant_params, scale_quant_params, zero_quant_params):
 		quant_scale = scale_quant_params is not None
 		quant_zero  = zero_quant_params  is not None
+
+		self.in_features, self.out_features = W.t().shape
 		
 		#Quantize
 		W_q , meta = Quantizer.quantize(W, **weight_quant_params) 
@@ -192,46 +310,50 @@ class HQQLinear(torch.nn.Module):
 		self.cuda()
 		self.ready = True
 
-	@torch.inference_mode()
 	def dequantize(self):
 		assert self.ready, "model was not quantized"
 		W_q, meta = self.W_q, self.meta
+
 		del_keys = []
 		if(meta['quant_scale']):
 			meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
 		if(meta['quant_zero']):
 			meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero']);  del_keys.append('zero')
+
 		W_est = Quantizer.dequantize(W_q, meta)
+
 		#Cleanup
 		for key in del_keys: del meta[key]
 		return W_est
 
-	@classmethod
-	def set_backend(cls, backend: HQQBackend):
-		HQQLinear.backend = backend
-		cls.forward       = getattr(cls, HQQLinear.backend.value)
+	def matmul(self, x, transpose=True):
+		weight = self.dequantize() 
+		return torch.matmul(x, weight.t() if (transpose) else weight)
 
-	@torch.no_grad()
-	def forward_pytorch(self, x):
-		W_est = self.dequantize()
-		out   = torch.matmul(x, W_est.t())
-		if(self.bias!=None): out += self.bias
-		del W_est
+	@torch.compile()
+	def matmul_compile(self, *args, **kwargs):
+		return self.matmul(*args, **kwargs)
+
+	def forward_pytorch_backprop(self, x):
+		return HQQMatmulNoCacheMul.apply(x, self.matmul, self.bias)
+
+	def forward_pytorch_backprop_compile(self, x):
+		return HQQMatmulNoCacheMul.apply(x, self.matmul_compile, self.bias)
+
+	def forward_pytorch(self, x): 
+		out = torch.matmul(x, self.dequantize().t())
+		if(self.bias is not None):
+			out += self.bias
 		return out
+
+	@torch.compile()
+	def forward_pytorch_compile(self, x): 
+		return self.forward_pytorch(x)
 
 	##############################################
 	#Experimental
 	#############################################
-	@torch.no_grad()
-	@torch.compile()
-	def forward_pytorch_compile(self, x):
-		W_est = self.dequantize()
-		out   = torch.matmul(x, W_est.t())
-		if(self.bias!=None): out += self.bias
-		del W_est
-		return out
-
-	@torch.no_grad()
+	#Requires building the aten backend
 	def forward_aten(self, x):
 		empt = torch.empty([0])
 		W_q  = self.W_q
@@ -274,7 +396,8 @@ class HQQLinear(torch.nn.Module):
 
 def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=False):
 	assert nbits in Quantizer.SUPPORTED_BITS, "nbits value not supported. Check Quantizer.SUPPORTED_BITS."
-	assert is_divisible(group_size, 8), "Invalid group_size param: the value should be a multiple of 8." 
+	if(group_size is not None):
+		assert is_divisible(group_size, 8), "Invalid group_size param: the value should be a multiple of 8." 
 	weight_quant_params = {'nbits':nbits,'channel_wise':True,  'group_size':group_size, 'optimize':True, 'round_zero':True if nbits==4 else False} 
 	scale_quant_params  = {'nbits':8,    'channel_wise':True,  'group_size':128,        'optimize':False} if (quant_scale) else None
 	zero_quant_params   = {'nbits':8,    'channel_wise':False, 'group_size':None,       'optimize':False} if (quant_zero)  else None

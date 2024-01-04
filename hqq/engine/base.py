@@ -26,6 +26,7 @@ class HQQWrapper:
 	@classmethod
 	def _make_quantizable(cls, model, quantized):
 		model.hqq_quantized = quantized
+		model.base_class     = cls._get_hqq_class(model)
 
 	@classmethod
 	def _check_arch_support(cls, arg):
