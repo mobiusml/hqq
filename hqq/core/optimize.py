@@ -73,7 +73,7 @@ def update_scale_grid_search(W_f, scale, zero, axis, min_max):
 	return scale_b
 
 
-#Proximal solver || W - dequantize(quantize(W))||_p^p
+#Proximal solver || W - dequantize(quantize(W))||_p^p - Experimental
 @torch.inference_mode()
 def optimize_weights_proximal_v2(tensor, scale, zero, min_max, axis=0, device='cuda', 
 								opt_params={'lp_norm':0.7, 'beta':1e1, 'kappa':1.01, 'iters':20, 'tol':0., 'early_stop':True, 'scale_gridsearch':False}, 
@@ -180,8 +180,8 @@ def optimize_weights_proximal_legacy(tensor, scale, zero, min_max, axis=0, devic
 
 	return scale, zero 
 
-#optimize_weights_proximal = optimize_weights_proximal_legacy
-optimize_weights_proximal = optimize_weights_proximal_v2
+optimize_weights_proximal = optimize_weights_proximal_legacy
+#optimize_weights_proximal = optimize_weights_proximal_v2
 
 #SGD solver  || W - dequantize(quantize(W))||_1 (p=1 only)
 def optimize_weights_autograd(tensor, scale, zero, min_max, axis=0, device='cuda', opt_params={'lr':2e-3, 'iters':2500}, verbose=False): 
