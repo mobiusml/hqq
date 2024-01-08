@@ -19,21 +19,11 @@ from hqq.core.quantize import *
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False)
 model.quantize_model(quant_config=quant_config)
 
-######################################################################################
-## BNB Quantize (for comparison)
-# import transformers, torch
-# model     = transformers.AutoModelForCausalLM.from_pretrained(model_id, use_auth_token=hf_auth, cache_dir=cache_path, load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)
-# tokenizer = transformers.AutoTokenizer.from_pretrained(model_id,        use_auth_token=hf_auth, cache_dir=cache_path) 
-
-# from hqq.models.hf.llama import LlamaHQQ
-# model.base_class = LlamaHQQ
-
 #Add Peft
 ######################################################################################
-
 from hqq.core.peft import PeftUtils
 
-train_dtype      = torch.bfloat16 #torch.float32
+train_dtype      = torch.bfloat16 #torch.float32 / torch.bfloat16
 base_lora_params = {'lora_type':'default', 'r':32, 'lora_alpha':64, 'dropout':0.05, 'train_dtype':train_dtype}
 lora_params      = {'self_attn.q_proj': base_lora_params,
 			        'self_attn.k_proj': base_lora_params,
@@ -42,7 +32,6 @@ lora_params      = {'self_attn.q_proj': base_lora_params,
 			        'mlp.gate_proj'   : None,
 			        'mlp.up_proj'     : None,
 			        'mlp.down_proj'   : None}
-
 
 #Apply LoRA
 PeftUtils.add_lora(model, lora_params)
@@ -67,7 +56,7 @@ tokenizer.add_eos_token = False
 batch_size  = 1 
 num_epochs  = 1
 grad_acc    = 1
-max_tokens  = 256  #1024 
+max_tokens  = 256 
 max_samples = 5000
 
 #Warmup for torch compile
@@ -75,7 +64,6 @@ with torch.no_grad():
     out = model(torch.ones((batch_size, max_tokens), dtype=torch.int32, device='cuda'))
 del out 
 cleanup()
-
 
 #OpenAssistant
 ##########################################################################
@@ -89,8 +77,12 @@ def pre_process_chat(chat):
 def assitant_prompt(prompt):
 	return '### Human:' + prompt + '\n### Assistant:'
 
+# #Filter short samples
+# dataset     = Dataset.from_dict({'text':[dataset[i]['text']     for i in tqdm(range(len(dataset)))     if len(dataset[i]['text'])>500]})
+# dataset_val = Dataset.from_dict({'text':[dataset_val[i]['text'] for i in tqdm(range(len(dataset_val))) if len(dataset_val[i]['text'])>500]})
+
 random.seed(100)
-idx = random.sample(range(len(dataset)), max_samples)
+idx = random.sample(range(len(dataset)), min(max_samples, len(dataset)))
 
 dataset     = Dataset.from_dict({'text':[pre_process_chat(dataset[i]['text']) for i in tqdm(idx)]})
 dataset_val = Dataset.from_dict({'text':[pre_process_chat(dataset_val[i]['text']) for i in range(len(dataset_val))]})
@@ -121,7 +113,7 @@ training_args = transformers.TrainingArguments(
     fp16=train_dtype==torch.float32,
     max_grad_norm=1.0,
     save_steps=10000000,
-    lr_scheduler_type= "linear", #constant | linear
+    lr_scheduler_type= "linear", 
 )
 
 #Wrap model to avoid accelerate issues 
@@ -162,7 +154,6 @@ trainer.train()
 
 #Prediction/Eval
 ######################################################################################
-
 #from #https://huggingface.co/spaces/evaluate-metric/perplexity/blob/main/perplexity.py
 def compute_perplexity_batched(model, tokenizer, predictions, encodings=None, batch_size=1, add_start_token=True, device='cuda', max_length=None):
     if tokenizer.pad_token is None and batch_size > 1:
@@ -232,7 +223,6 @@ def compute_perplexity_batched(model, tokenizer, predictions, encodings=None, ba
     return np.mean(ppls)
 
 
-
 tokenizer.add_bos_token = True
 tokenizer.add_eos_token = False
 model.eval()
@@ -241,4 +231,3 @@ model.eval()
 PeftUtils.cast_lora_weights(model, dtype=torch.half)
 
 print('perplexity', compute_perplexity_batched(model=model, tokenizer=tokenizer, predictions=[s['text'] for s in dataset_val], batch_size=1, max_length=max_tokens))
-

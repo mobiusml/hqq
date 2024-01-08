@@ -63,6 +63,7 @@ class Quantizer:
 		if(optimize): scale, zero = Quantizer.optimize_weights(tensor=W, scale=scale, zero=zero, min_max=min_max, axis=axis)
 
 		#Quantize
+		scale, zero = scale.clone(), zero.clone() #Necessary for fake quantization backprop
 		W_q  = torch.round(W*scale + zero).clamp(min_max[0], min_max[1])
 
 		#Store meta-data (we invert the scale for dequantization)
@@ -70,8 +71,9 @@ class Quantizer:
 
 		#Pack bits
 		if(bitpack):
-			W_q  = Quantizer.pack[meta['packing']](W_q)
+			W_q = Quantizer.pack[meta['packing']](W_q)
 		else:
+			W_q = W_q.to(tensor.dtype) 
 			meta['packing'] = None
 
 		#cleanup
@@ -88,7 +90,7 @@ class Quantizer:
 			if((meta['group_size'] is not None) and (meta['nbits']==3)):
 				W_r = W_r[:meta['group_size']] if (meta['axis']==0) else W_r[:,:meta['group_size']]
 		else:
-			W_r = W_q
+			W_r = W_q.half()
 		W_r = ((W_r - meta['zero'])*meta['scale']).reshape(meta['shape']) 
 		return W_r
 
@@ -290,7 +292,6 @@ class HQQLinear(torch.nn.Module):
 		if(self.in_gpu==False): self.cuda()
 		self.ready  = True
 
-	@torch.inference_mode()
 	def quantize(self, W, weight_quant_params, scale_quant_params, zero_quant_params):
 		quant_scale = scale_quant_params is not None
 		quant_zero  = zero_quant_params  is not None
