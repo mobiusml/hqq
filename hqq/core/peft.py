@@ -332,7 +332,7 @@ class PeftUtils:
 		#Base classs
 		base_class = cls.get_base_class(model, base_class)
 
-		lora_global_params = torch.load(file, map_location='cpu')
+		lora_global_params = torch.load(filename, map_location='cpu')
 
 		def _patch_linear_load_weights(layer, patch_params, return_layer=True):
 			if(is_hqq_lora_layer(layer)):
