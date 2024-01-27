@@ -28,6 +28,12 @@ class HQQLinearLoRA(torch.nn.Module):
 		if((self.bias is None) and peft_config['train_bias']):
 			self.bias = torch.nn.Parameter(torch.zeros((self.out_features,), device=self.device, dtype=self.train_dtype), requires_grad=True)
 
+		#Compute type: x.dtype force cast
+		if('compute_dtype' not in peft_config):
+			self.compute_dtype = peft_config['compute_dtype']
+		else:
+			self.compute_dtype = torch.float16 
+
 		#Dropout
 		if('dropout' in peft_config):
 			self.peft_drop  = torch.nn.Dropout(p=peft_config['dropout']) if (peft_config['dropout']>0.) else torch.nn.Identity()
@@ -55,9 +61,11 @@ class HQQLinearLoRA(torch.nn.Module):
 			torch.nn.init.zeros_(self.lora_B)
 
 	def forward(self, x):
+		#Forward with base linear 
+		x = x.to(self.compute_dtype)
+
 		x_dtype = x.dtype 
 
-		#Forward with base linear 
 		out = self.linear_layer(x)
 		
 		#LoRA
