@@ -29,7 +29,7 @@ class HQQLinearLoRA(torch.nn.Module):
 			self.bias = torch.nn.Parameter(torch.zeros((self.out_features,), device=self.device, dtype=self.train_dtype), requires_grad=True)
 
 		#Compute type: x.dtype force cast
-		if('compute_dtype' not in peft_config):
+		if('compute_dtype' in peft_config):
 			self.compute_dtype = peft_config['compute_dtype']
 		else:
 			self.compute_dtype = torch.float16 
