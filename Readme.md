@@ -51,7 +51,9 @@ cd hqq/kernels && python setup.py install;
 ### Supported Models
 #### LLMs 
 - Llama (Hugging Face + VLLM) 🦙
+- Mistral (Hugging Face)
 - Mixtral-8x7B (Hugging Face)
+- Phi + Phi_opt (Hugging Face)
 
 #### Vision 
 - ViT-CLIP (timm) 🖼️
@@ -97,6 +99,30 @@ from transformers import AutoModelForCausalLM
 model = AutoModelForCausalLM.from_pretrained(model_id) 
 #Quantize
 HQQModelForCausalLM.quantize_model_(model, quant_config=quant_config)
+```
+
+For multimodal models, can quantize the models separately. Here's an example that quantizes the Llama language model in Llava:
+```Python
+#Load the model on CPU
+import transformers
+model_id  = "llava-hf/llava-1.5-13b-hf",
+processor = transformers.AutoProcessor.from_pretrained(model_id)
+model     = transformers.LlavaForConditionalGeneration.from_pretrained(model_id)
+
+#Quantize and offload to GPU
+from hqq.core.quantize import *
+from hqq.models.hf.llama import LlamaHQQ
+LlamaHQQ.quantize_model(model.language_model, quant_config=BaseQuantizeConfig(nbits=4, group_size=64))
+
+#Use fp16 CLIP and tower
+model.vision_tower          = model.vision_tower.half().cuda()
+model.multi_modal_projector = model.multi_modal_projector.half().cuda()
+model                       = model.eval();
+
+#Optimize/compile (Optional)
+HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)
+model.vision_tower          = torch.compile(model.vision_tower)
+model.multi_modal_projector = torch.compile(model.multi_modal_projector)
 ```
 
 ### VLLM 🚀

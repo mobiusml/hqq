@@ -9,6 +9,12 @@ _HQQ_REGISTRY['LlamaForCausalLM'] = LlamaHQQ
 from hqq.models.hf.mixtral import MixtralHQQ
 _HQQ_REGISTRY['MixtralForCausalLM'] = MixtralHQQ
 
+from hqq.models.hf.phi import PhiHQQ
+_HQQ_REGISTRY['PhiForCausalLM'] = PhiHQQ
+
+from hqq.models.hf.mistral import MistralHQQ
+_HQQ_REGISTRY['MistralForCausalLM'] = MistralHQQ
+
 #Alias 
 AutoTokenizer = transformers.AutoTokenizer
 
