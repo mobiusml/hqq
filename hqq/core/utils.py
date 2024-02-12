@@ -5,7 +5,7 @@ import gc
 def cleanup():
 	torch.cuda.empty_cache()
 	gc.collect()
-	
+
 def is_divisible(val1, val2):
 	return int(val2*np.ceil(val1/val2))==val1
 

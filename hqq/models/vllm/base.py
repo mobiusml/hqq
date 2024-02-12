@@ -87,7 +87,7 @@ class BaseHQQVLLMModel(BaseHQQModel):
 
 	#################################################
 	@classmethod
-	def from_quantized_single_worker(cls, save_dir_or_hub, cache_dir='', device='cuda:0'):
+	def from_quantized_single_worker(cls, save_dir_or_hub, cache_dir='', compute_dtype=torch.float16, device='cuda:0'):
 		#Get directory path
 		save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)
 
@@ -108,11 +108,11 @@ class BaseHQQVLLMModel(BaseHQQModel):
 		@torch.no_grad()
 		def _load_module(module, params=None):
 			if(module.name not in weights): 
-				return module.half().cuda()
+				return module.to(compute_dtype).cuda()
 
 			state_dict = weights[module.name]
 			if(('W_q' in state_dict) and ('meta' in state_dict)):
-				hqq_module = HQQLinear(linear_layer=None, quant_config=None)
+				hqq_module = HQQLinear(linear_layer=None, quant_config=None, compute_dtype=compute_dtype)
 				hqq_module.load_state_dict(state_dict)
 
 				#Clear original params

@@ -103,7 +103,7 @@ class BaseHQQModel:
 
 	#Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
 	@classmethod
-	def quantize_model(cls, model, quant_config):
+	def quantize_model(cls, model, quant_config, compute_dtype=torch.float16):
 		#Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
 		if(True in [(key in cls.get_linear_tags()) for key in quant_config.keys()]): 
 			#If the user doesn't specify a key from get_linear_tags, the layer is not quantized via (key, None)
@@ -115,9 +115,9 @@ class BaseHQQModel:
 
 		#We replace the nn.Linear layers with HQQLinear
 		def _patch_linear(linear_layer, quant_config):
-			return HQQLinear(linear_layer, quant_config) if (quant_config is not None) else linear_layer.half().cuda()
+			return HQQLinear(linear_layer, quant_config, compute_dtype=compute_dtype) if (quant_config is not None) else linear_layer.to(compute_dtype).cuda()
 
-		cls.patch_model(model, lambda l: l.half().cuda(), _patch_linear, patch_params)
+		cls.patch_model(model, lambda l: l.to(compute_dtype).cuda(), _patch_linear, patch_params)
 
 	#Prepares model weights by iterating through modules. It might some parameters that are NOT modules like model.param1
 	@classmethod
@@ -172,7 +172,7 @@ class BaseHQQModel:
 
 	#Main function to load an HQQ quantized model from either HF hub or locally
 	@classmethod
-	def from_quantized(cls, save_dir_or_hub, cache_dir=''):
+	def from_quantized(cls, save_dir_or_hub, compute_dtype=torch.float16, cache_dir=''):
 		#Get directory path
 		save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)
 
@@ -193,11 +193,11 @@ class BaseHQQModel:
 		@torch.no_grad()
 		def _load_module(module, params=None):
 			if(module.name not in weights): 
-				return module.half().cuda()
+				return module.to(compute_dtype).cuda()
 
 			state_dict = weights[module.name]
 			if(('W_q' in state_dict) and ('meta' in state_dict)):
-				module = HQQLinear(linear_layer=None, quant_config=None)
+				module = HQQLinear(linear_layer=None, quant_config=None, compute_dtype=compute_dtype)
 				module.load_state_dict(state_dict)
 			else:
 				for key in state_dict:

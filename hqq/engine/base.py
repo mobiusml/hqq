@@ -47,12 +47,12 @@ class HQQWrapper:
 
 	#####################################################
 	@classmethod
-	def quantize_model_(cls, model, quant_config):
+	def quantize_model_(cls, model, quant_config, compute_dtype):
 		if(cls._is_quantizable(model)==False):
 			cls._make_quantizable(model, quantized=False)  
 		cls._check_arch_support(model)
 		cls._check_if_already_quantized(model)
-		cls._get_hqq_class(model).quantize_model(model, quant_config=quant_config)
+		cls._get_hqq_class(model).quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype)
 		cls._set_quantized(model, True)
 
 	@classmethod
@@ -61,13 +61,13 @@ class HQQWrapper:
 		cls._get_hqq_class(model).save_quantized(model, save_dir=save_dir)
 
 	@classmethod
-	def from_quantized(cls, save_dir_or_hub, cache_dir=''):
+	def from_quantized(cls, save_dir_or_hub, compute_dtype, cache_dir=''):
 		#Both local and hub-support
 		save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub)
 		arch_key = cls._get_arch_key_from_save_dir(save_dir)
 		cls._check_arch_support(arch_key)
 
-		model = cls._get_hqq_class(arch_key).from_quantized(save_dir, cache_dir)
+		model = cls._get_hqq_class(arch_key).from_quantized(save_dir, compute_dtype=compute_dtype, cache_dir=cache_dir)
 
 		cls._make_quantizable(model, quantized=True)
 		return model

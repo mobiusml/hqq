@@ -64,8 +64,8 @@ class HQQLLM(_Parent, HQQWrapper):
 			workers[i].model = workers[i].model.half().cuda(i)
 		return self
 
-	def quantize_model(self, quant_config):
-		return self.quantize_model_(model=self, quant_config=quant_config)
+	def quantize_model(self, quant_config, compute_dtype):
+		return self.quantize_model_(model=self, quant_config=quant_config, compute_dtype=compute_dtype)
 
 	def save_quantized(self, save_dir):
 		return self.save_quantized_(model=self, save_dir=save_dir) 
@@ -77,7 +77,7 @@ class HQQLLM(_Parent, HQQWrapper):
 
 	#This requires custom loading because VLLM requires a str input model to initalize the workers
 	@classmethod
-	def from_quantized(cls, save_dir_or_hub, cache_dir='', tensor_parallel_size=1):
+	def from_quantized(cls, save_dir_or_hub, compute_dtype=torch.float16, cache_dir='', tensor_parallel_size=1):
 		assert tensor_parallel_size==1, "Only single GPU is supported."
 		#Both local and hub-support
 		save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub)
@@ -89,7 +89,7 @@ class HQQLLM(_Parent, HQQWrapper):
 		instance = cls(model=_ARCH_TO_DEFAULT[arch_key], force_skip=True, tensor_parallel_size=1) 
 		workers  = instance.llm_engine.workers
 		for i in range(len(workers)):
-			workers[i].model = cls._get_hqq_class(arch_key).from_quantized_single_worker(save_dir_or_hub=save_dir_or_hub, cache_dir=cache_dir, device='cuda:'+str(i))
+			workers[i].model = cls._get_hqq_class(arch_key).from_quantized_single_worker(save_dir_or_hub=save_dir_or_hub, compute_dtype=compute_dtype, cache_dir=cache_dir, device='cuda:'+str(i))
 
 		cls._make_quantizable(instance, quantized=True)
 		return instance
