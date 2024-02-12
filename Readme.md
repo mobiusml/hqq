@@ -39,13 +39,16 @@ The quantization parameters are set as follows:
 
 You can try to change the backend which could speed-up the runtime:
 ```Python
-HQQLinear.set_backend(HQQBackend.PYTORCH)         #Pytorch backend (default) 
-HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE) #Compiled Pytorch (fastest but potentially issues)
-HQQLinear.set_backend(HQQBackend.ATEN)            #C++ Aten/Torch backend (experimental)
+HQQLinear.set_backend(HQQBackend.PYTORCH)                  #Pytorch backend (default) 
+HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP)         #Same as BACKPROP but supports the backward pass
+HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)          #Compiled Pytorch (fastest but potentially issues)
+HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP_COMPILE) #Same as PYTORCH_COMPILE, but supports the backward pass
+HQQLinear.set_backend(HQQBackend.ATEN)                     #C++ Aten/Torch backend (CUDA and Pytorch)
+HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)            #Same as ATEN but supports the backward pass 
 ```
-In order to use the ATEN backend (experimental), you need to build it via:
+We recommend you use the ```HQQBackend.ATEN_BACKPROP``` backend for faster processing. You can install as follows:
 ```
-cd hqq/kernels && python setup.py install;
+cd hqq/kernels && python setup_cuda.py install;
 ```
 
 ### Supported Models
@@ -78,11 +81,11 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 ######################
 from hqq.core.quantize import *
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-model.quantize_model(quant_config=quant_config)
+model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16) 
 
 #Optional: set backend
 ######################
-HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)
+HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 ```
 
 You can save/load a quantized model as follows:
@@ -101,7 +104,7 @@ model = AutoModelForCausalLM.from_pretrained(model_id)
 HQQModelForCausalLM.quantize_model_(model, quant_config=quant_config)
 ```
 
-For multimodal models, can quantize the models separately. Here's an example that quantizes the Llama language model in Llava:
+For multimodal models, you can quantize the models separately. Here's an example that quantizes the Llama language model in Llava:
 ```Python
 #Load the model on CPU
 import transformers
@@ -120,7 +123,7 @@ model.multi_modal_projector = model.multi_modal_projector.half().cuda()
 model                       = model.eval();
 
 #Optimize/compile (Optional)
-HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)
+HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 model.vision_tower          = torch.compile(model.vision_tower)
 model.multi_modal_projector = torch.compile(model.multi_modal_projector)
 ```
@@ -147,7 +150,7 @@ model.quantize_model(quant_config=quant_config)
 
 #Optional: set backend
 ######################
-HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)
+HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 ```
 
 Additionally, you can use the quantized model in Langchain (requires ```pip install langchain```) as follows:
@@ -185,11 +188,11 @@ model = HQQtimm.create_model(model_id, pretrained=True)
 ######################
 from hqq.core.quantize import *
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-model.quantize_model(quant_config=quant_config)
+model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16)
 
 #Optional: set backend
 ######################
-HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)
+HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 ```
 
 You can save/load the quantized models as follows:
@@ -236,7 +239,7 @@ lora_params      = {'self_attn.q_proj': base_lora_params,
 PeftUtils.add_lora(model, lora_params)
 
 #Optional: faster but might not work on older GPUs
-HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP_COMPILE)
+HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 
 #Train ....
 
