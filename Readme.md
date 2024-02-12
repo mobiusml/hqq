@@ -51,6 +51,13 @@ We recommend you use the ```HQQBackend.ATEN_BACKPROP``` backend for faster proce
 cd hqq/kernels && python setup_cuda.py install;
 ```
 
+The ```HQQBackend.ATEN_BACKPROP``` backend with ```setup_cuda``` uses CUDA kernels for the dequantization step. This leads to a significant speed-up compared to ```PYTORCH_COMPILE``` and can be combined with ```model = torch.compile(model)``` for even faster runtime:
+
+<p align="center">
+  <img src="https://github-production-user-asset-6210df.s3.amazonaws.com/37179323/304065508-2414cbaf-1c5b-414e-a613-8029a7b28cd9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20240212%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240212T121916Z&X-Amz-Expires=300&X-Amz-Signature=ce49054925c05329ebc533e2268db5d75e4daf6bae002e472e60e17a9e38a2d1&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=0" alt="HQQ Aten CUDA - Titan RTX">
+</p>
+
+
 ### Supported Models
 #### LLMs 
 - Llama (Hugging Face + VLLM) 🦙
