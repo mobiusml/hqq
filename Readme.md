@@ -53,10 +53,13 @@ cd hqq/kernels && python setup_cuda.py install;
 
 The ```HQQBackend.ATEN_BACKPROP``` backend with ```setup_cuda``` uses CUDA kernels for the dequantization step. This leads to a significant speed-up compared to ```PYTORCH_COMPILE``` and can be combined with ```model = torch.compile(model)``` for even faster runtime:
 
-<p align="center">
-  <img src="https://github-production-user-asset-6210df.s3.amazonaws.com/37179323/304065508-2414cbaf-1c5b-414e-a613-8029a7b28cd9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20240212%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240212T121916Z&X-Amz-Expires=300&X-Amz-Signature=ce49054925c05329ebc533e2268db5d75e4daf6bae002e472e60e17a9e38a2d1&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=0" alt="HQQ Aten CUDA - Titan RTX">
-</p>
-
+ <div class="row"><center>
+  <div class="column">
+    <img src="https://github-production-user-asset-6210df.s3.amazonaws.com/37179323/304065508-2414cbaf-1c5b-414e-a613-8029a7b28cd9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20240212%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240212T121916Z&X-Amz-Expires=300&X-Amz-Signature=ce49054925c05329ebc533e2268db5d75e4daf6bae002e472e60e17a9e38a2d1&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=0" alt="Titan RTX" style="width:48%">
+<img src="https://private-user-images.githubusercontent.com/37179323/304157853-f5e50e3c-95dc-40d2-a44a-dc21a7b1d289.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MDc3NTYyMTksIm5iZiI6MTcwNzc1NTkxOSwicGF0aCI6Ii8zNzE3OTMyMy8zMDQxNTc4NTMtZjVlNTBlM2MtOTVkYy00MGQyLWE0NGEtZGMyMWE3YjFkMjg5LnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNDAyMTIlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjQwMjEyVDE2MzgzOVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWM2MGIyNzliODJmZjg2OTA3YzFmNTlhODNiMWUwNzJhODZmNjk5NGQ3NjNmYzY3NDkxZGY5YzBhY2M5ZjM3ZWYmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JmFjdG9yX2lkPTAma2V5X2lkPTAmcmVwb19pZD0wIn0.jiHVB1z2WRrMZhk7PCamIc92AUZ8-4f7E0PhOEp5g9A" alt="A100" style="width:48%">
+  </div>
+ </center>
+</div> 
 
 ### Supported Models
 #### LLMs 
@@ -235,12 +238,12 @@ from hqq.core.peft import PeftUtils
 
 base_lora_params = {'lora_type':'default', 'r':32, 'lora_alpha':64, 'dropout':0.05, 'train_dtype':torch.bfloat16}
 lora_params      = {'self_attn.q_proj': base_lora_params,
-			        'self_attn.k_proj': base_lora_params,
-			        'self_attn.v_proj': base_lora_params,
-			        'self_attn.o_proj': base_lora_params,
-			        'mlp.gate_proj'   : None,
-			        'mlp.up_proj'     : None,
-			        'mlp.down_proj'   : None}
+                    'self_attn.k_proj': base_lora_params,
+                    'self_attn.v_proj': base_lora_params,
+                    'self_attn.o_proj': base_lora_params,
+                    'mlp.gate_proj'   : None,
+                    'mlp.up_proj'     : None,
+                    'mlp.down_proj'   : None}
 
 
 PeftUtils.add_lora(model, lora_params)
