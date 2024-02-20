@@ -1,6 +1,6 @@
 #Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
-import torch
+import torch, copy
 import numpy as np 
 
 from .utils    import *
@@ -98,7 +98,8 @@ class Quantizer:
 	@classmethod
 	def to_inplace(cls, W_q, meta, device):
 		compute_dtype = meta['compute_dtype'] if ('compute_dtype' in meta) else torch.float16
-		W_q = W_q.to(device).contiguous() 
+		if(W_q is not None):
+			W_q = W_q.to(device).contiguous() 
 		for key in meta:
 			if(type(meta[key])==torch.Tensor):
 				meta[key] = (meta[key].to(compute_dtype) if torch.is_floating_point(meta[key]) else meta[key]).to(device).contiguous() 
@@ -107,7 +108,10 @@ class Quantizer:
 	@classmethod
 	def to_ooplace(cls, W_q, meta, device):
 		compute_dtype = meta['compute_dtype'] if ('compute_dtype' in meta) else torch.float16
-		W_q_c  = W_q.to(device).contiguous() 
+		if(W_q is not None):
+			W_q_c  = W_q.to(device).contiguous() 
+		else:
+			W_q_c = None 
 		meta_c = {}
 		for key in meta:
 			if(type(meta[key])==torch.Tensor):
@@ -250,12 +254,14 @@ class HQQLinear(torch.nn.Module):
 		self.bias          = None
 		self.device_n      = device_n
 		self.compute_dtype = compute_dtype
-		self.quant_config  = quant_config
+		self.quant_config  = copy.deepcopy(quant_config)
+		self.offload_meta  = self.quant_config.pop('offload_meta') if (self.quant_config is not None) else None
+		
 		self.set_backend(HQQLinear.backend) #Default backend
 
 		if(linear_layer is not None):
 			self.bias = None if (linear_layer.bias==None) else linear_layer.bias.to(self.compute_dtype).cuda()
-			self.quantize(linear_layer.weight.data, **quant_config)
+			self.quantize(linear_layer.weight.data, **self.quant_config)
 
 		if(del_orig): del linear_layer
 		torch.cuda.empty_cache()
@@ -266,14 +272,28 @@ class HQQLinear(torch.nn.Module):
 		HQQLinear.backend = backend
 		cls.forward       = getattr(cls, backend.value)
 
+	#TODO: rewrite this mess 
 	def cuda(self, device_n=0):
 		if(self.in_gpu): return 
 		self.meta['compute_dtype'] = self.compute_dtype 
+
 		self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta, device_n)
-		if(self.meta['quant_scale']):
-			self.meta['scale_q'] , self.meta['meta_scale'] = Quantizer.cuda(self.meta['scale_q'], self.meta['meta_scale'], device_n)
+
 		if(self.meta['quant_zero']):
 			self.meta['zero_q'] , self.meta['meta_zero']   = Quantizer.cuda(self.meta['zero_q'], self.meta['meta_zero'], device_n)
+
+		if(self.meta['quant_scale']):
+			self.meta['scale_q'] , self.meta['meta_scale'] = Quantizer.cuda(self.meta['scale_q'], self.meta['meta_scale'], device_n)
+		
+		if(self.offload_meta):
+			if(self.meta['quant_scale'] and self.meta['quant_zero']):
+				self.meta['zero_scale'] = torch.stack((self.meta['zero_q'], self.meta['scale_q']))
+				del self.meta['scale_q'], self.meta['zero_q']
+			else:
+				self.meta['zero_scale'] = torch.stack((self.meta['zero'], self.meta['scale'])).to(self.compute_dtype)
+				del self.meta['scale'], self.meta['zero'] 
+
+			self.meta['zero_scale'] = self.meta['zero_scale'].contiguous().cpu()
 
 		if(self.bias is not None):
 			self.bias = self.bias.to(self.compute_dtype).cuda(device_n)
@@ -281,6 +301,8 @@ class HQQLinear(torch.nn.Module):
 		self.W_q    = torch.nn.Parameter(self.W_q, requires_grad=False)
 		self.device = self.W_q.device
 		self.in_gpu = True
+
+		torch.cuda.empty_cache()
 
 	def to(self, *args, **kwargs):
 		pass
@@ -297,15 +319,18 @@ class HQQLinear(torch.nn.Module):
 		self.bias   = state_dict['bias'] if ('bias' in state_dict) else None
 		self.in_gpu = self.W_q.device.type == 'cuda'
 		if(self.in_gpu): 
-			if('scale' in self.meta):
-				self.meta['scale'] = self.meta['scale'].to(self.compute_dtype)
 			if('zero' in self.meta):
 				self.meta['zero']  = self.meta['zero'].to(self.compute_dtype)
+
+			if('scale' in self.meta):
+				self.meta['scale'] = self.meta['scale'].to(self.compute_dtype)
+
+			if(('zero_scale' in self.meta) and (self.meta['quant_scale']==False) and (self.meta['zero_scale']==False)):
+				self.meta['zero_scale']  = self.meta['zero_scale'].to(self.compute_dtype)
 		else:
 			self.cuda(self.device_n)
 		self.ready  = True
 
-	#@torch.inference_mode()
 	def quantize(self, W, weight_quant_params, scale_quant_params, zero_quant_params):
 		quant_scale = scale_quant_params is not None
 		quant_zero  = zero_quant_params  is not None
@@ -315,12 +340,14 @@ class HQQLinear(torch.nn.Module):
 		#Quantize
 		W_q , meta = Quantizer.quantize(W, **weight_quant_params) 
 		meta.update({'quant_scale':quant_scale, 'quant_zero':quant_zero})
-		if(meta['quant_scale']):
-			meta['scale_q'] , meta['meta_scale'] = Quantizer.quantize(meta['scale'], **scale_quant_params); del meta['scale']
-			meta['meta_scale']['compute_dtype']  = self.compute_dtype
+
 		if(meta['quant_zero']):
 			meta['zero_q'], meta['meta_zero']    = Quantizer.quantize(meta['zero'],  **zero_quant_params);  del meta['zero']
 			meta['meta_zero']['compute_dtype']   = self.compute_dtype
+
+		if(meta['quant_scale']):
+			meta['scale_q'] , meta['meta_scale'] = Quantizer.quantize(meta['scale'], **scale_quant_params); del meta['scale']
+			meta['meta_scale']['compute_dtype']  = self.compute_dtype
 
 		self.W_q   = W_q
 		self.meta  = meta 
@@ -332,10 +359,22 @@ class HQQLinear(torch.nn.Module):
 		W_q, meta = self.W_q, self.meta
 
 		del_keys = []
-		if(meta['quant_scale']):
-			meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
+
+		if('zero_scale' in meta):
+			zero_scale = meta['zero_scale'].to(self.W_q.device)
+
+			if(zero_scale.dtype==torch.uint8):
+				meta['zero_q']  = zero_scale[0]; del_keys.append('zero_q');
+				meta['scale_q'] = zero_scale[1]; del_keys.append('scale_q');
+			else:
+				meta['zero']  = zero_scale[0]; del_keys.append('zero');
+				meta['scale'] = zero_scale[1]; del_keys.append('scale');
+
 		if(meta['quant_zero']):
 			meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero']);  del_keys.append('zero')
+
+		if(meta['quant_scale']):
+			meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
 
 		W_est = Quantizer.dequantize(W_q, meta)
 
@@ -381,11 +420,23 @@ class HQQLinear(torch.nn.Module):
 		W_q, meta = self.W_q, self.meta
 
 		del_keys = []
+
+		if('zero_scale' in meta):
+			zero_scale = meta['zero_scale'].to(self.W_q.device)
+
+			if(zero_scale.dtype==torch.uint8):
+				meta['zero_q']  = zero_scale[0]; del_keys.append('zero_q');
+				meta['scale_q'] = zero_scale[1]; del_keys.append('scale_q');
+			else:
+				meta['zero']  = zero_scale[0]; del_keys.append('zero');
+				meta['scale'] = zero_scale[1]; del_keys.append('scale');
+
 		if(meta['quant_scale']):
 			if(meta['meta_scale']['group_size']):
 				meta['scale'] = self.dequantize_Wq_aten(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
 			else:
 				meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
+
 		if(meta['quant_zero']):
 			if(meta['meta_zero']['group_size']):
 				meta['zero'] = self.dequantize_Wq_aten(meta['zero_q'], meta['meta_zero']); del_keys.append('zero')
@@ -450,14 +501,26 @@ class HQQLinear(torch.nn.Module):
 	# 	return hqq_aten.forward_with_quant(*args)
 
 
-def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=False):
+def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=False, offload_meta=False):
 	assert nbits in Quantizer.SUPPORTED_BITS, "nbits value not supported. Check Quantizer.SUPPORTED_BITS."
 	if(group_size is not None):
 		assert is_divisible(group_size, 8), "Invalid group_size param: the value should be a multiple of 8." 
 	weight_quant_params = {'nbits':nbits,'channel_wise':True,  'group_size':group_size, 'optimize':True, 'round_zero':True if nbits==4 else False} 
-	scale_quant_params  = {'nbits':8,    'channel_wise':True,  'group_size':128,        'optimize':False} if (quant_scale) else None
-	zero_quant_params   = {'nbits':8,    'channel_wise':False, 'group_size':None,       'optimize':False} if (quant_zero)  else None
-	return {'weight_quant_params':weight_quant_params, 'scale_quant_params':scale_quant_params, 'zero_quant_params':zero_quant_params}
+
+	if(offload_meta):
+		if((quant_scale!=quant_zero)):
+			print(colored("quant_zero and quant_scale must be the same when offload_meta is set to True. Setting quant_scale=quant_zero." , 'yellow'))
+			quant_scale = quant_zero
+
+		scale_quant_params  = {'nbits':8, 'channel_wise':True,  'group_size':128,  'optimize':False} if (quant_scale) else None
+		zero_quant_params   = {'nbits':8, 'channel_wise':True,  'group_size':128,  'optimize':False} if (quant_zero)  else None
+
+	else:
+		scale_quant_params  = {'nbits':8, 'channel_wise':True,  'group_size':128,  'optimize':False} if (quant_scale) else None
+		zero_quant_params   = {'nbits':8, 'channel_wise':False, 'group_size':None, 'optimize':False} if (quant_zero)  else None
+
+
+	return {'weight_quant_params':weight_quant_params, 'scale_quant_params':scale_quant_params, 'zero_quant_params':zero_quant_params, 'offload_meta':offload_meta}
 
 #Alias: follow similar Auto-GPTQ naming
 BaseQuantizeConfig = hqq_base_quant_config

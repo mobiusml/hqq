@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import Dict
 from ..models.base import BaseHQQModel
+import torch
 
 #Wrapper that makes it easier to add quantization support to different engines (HF, VLLM, etc.)
 
@@ -47,7 +48,7 @@ class HQQWrapper:
 
 	#####################################################
 	@classmethod
-	def quantize_model_(cls, model, quant_config, compute_dtype):
+	def quantize_model_(cls, model, quant_config, compute_dtype=torch.float16):
 		if(cls._is_quantizable(model)==False):
 			cls._make_quantizable(model, quantized=False)  
 		cls._check_arch_support(model)
@@ -61,7 +62,7 @@ class HQQWrapper:
 		cls._get_hqq_class(model).save_quantized(model, save_dir=save_dir)
 
 	@classmethod
-	def from_quantized(cls, save_dir_or_hub, compute_dtype, cache_dir=''):
+	def from_quantized(cls, save_dir_or_hub, compute_dtype=torch.float16, cache_dir=''):
 		#Both local and hub-support
 		save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub)
 		arch_key = cls._get_arch_key_from_save_dir(save_dir)

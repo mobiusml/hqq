@@ -1,4 +1,4 @@
-import transformers, json
+import transformers, json, torch
 from typing import Dict
 
 _HQQ_REGISTRY = {}
@@ -34,7 +34,7 @@ class HQQModelForCausalLM(_Parent, HQQWrapper):
 	def _make_quantizable(cls, model, quantized):
 		model.hqq_quantized  = quantized
 		model.arch_key       = model.config.architectures[0] 
-		model.quantize_model = lambda quant_config, compute_dtype: cls.quantize_model_(model=model, quant_config=quant_config, compute_dtype=compute_dtype)
+		model.quantize_model = lambda quant_config, compute_dtype=torch.float16: cls.quantize_model_(model=model, quant_config=quant_config, compute_dtype=compute_dtype)
 		model.save_quantized = lambda save_dir: cls.save_quantized_(model=model, save_dir=save_dir)
 		model.cuda           = lambda *args, **kwargs: model if(quantized) else model.cuda
 		model.to             = lambda *args, **kwargs: model if(quantized) else model.to
