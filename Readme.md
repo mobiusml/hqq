@@ -37,7 +37,7 @@ The quantization parameters are set as follows:
 - ```quant_zero``` (bool): if True, it quantizes the zero-point to 8-bit without grouping.
 - ```quant_scale``` (bool): if True, it quantizes the scaling factor to 8-bit with a group_size of 128.
 
-Additionally, you can set ```offload_meta=True``` to offload the meta-data to the CPU. This dramatically decreases the GPU memory requirements but makes processing slightly slower for smaller group-sizes. With ```offload_meta=True```, you can run Llama2-70B and Mixtral with HQQ 2-bit using only 18.8GB and 13GB VRAM respectively!
+Additionally, you can set ```offload_meta=True``` to offload the meta-data to the CPU. This drastically decreases the GPU memory requirements but makes processing slightly slower for smaller group-sizes. With ```offload_meta=True```, you can run Llama2-70B and Mixtral with HQQ 2-bit using only 18.8GB and 13GB VRAM respectively!
 
 You can try to change the backend which could speed-up the runtime:
 ```Python
