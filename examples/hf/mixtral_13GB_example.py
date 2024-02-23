@@ -1,9 +1,9 @@
 ################################################################################################
-#git clone https://github.com/mobiusml/hqq/; cd hqq; pip install .;
-#cd hqq/kernels && python setup_cuda.py install; cd ..; cd ..; cd ..;
-#pip install flash-attn --no-build-isolation
-#pip install transformers --upgrade
-#num_threads=8; OMP_NUM_THREADS=$num_threads CUDA_VISIBLE_DEVICES=0 ipython 
+# git clone https://github.com/mobiusml/hqq/; cd hqq; pip install .;
+# cd hqq/kernels && python setup_cuda.py install; cd ..; cd ..; cd ..;
+# pip install flash-attn --no-build-isolation
+# pip install transformers --upgrade
+# num_threads=8; OMP_NUM_THREADS=$num_threads CUDA_VISIBLE_DEVICES=0 ipython 
 ################################################################################################
 
 import torch
@@ -50,11 +50,6 @@ cleanup()
 ################################################################################################
 import transformers 
 from threading import Thread
-from sys import stdout
-
-def print_flush(data):
-    stdout.write("\r" + data)
-    stdout.flush()
 
 def chat_processor(chat, max_new_tokens=100, do_sample=True):
     tokenizer.use_default_system_prompt = False
@@ -75,10 +70,11 @@ def chat_processor(chat, max_new_tokens=100, do_sample=True):
     t = Thread(target=model.generate, kwargs=generate_params)
     t.start()
 
+    print('------------------------------------------------------------')
     outputs = []
     for text in streamer:
         outputs.append(text)
-        print_flush("".join(outputs))
+        print(text, end="", flush=True)
 
     return outputs
 
