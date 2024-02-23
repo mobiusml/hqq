@@ -71,6 +71,8 @@ def chat_processor(chat, max_new_tokens=100, do_sample=True):
     t.start()
 
     print('------------------------------------------------------------')
+    cleanup()
+    print(chat); print();
     outputs = []
     for text in streamer:
         outputs.append(text)
