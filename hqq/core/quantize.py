@@ -25,6 +25,11 @@ class Quantizer:
 			  '4bit_u8':BitPack.unpack_4bit_u8,
 			  '3bit_32':BitPack.unpack_3bit_32,
 			  '2bit_u8':BitPack.unpack_2bit_u8}
+ 
+	unpack_view_dtype = {'8bit_u8':torch.uint8,
+						 '4bit_u8':torch.uint8,
+						 '3bit_32':torch.int32,
+						 '2bit_u8':torch.uint8}
 
 	@classmethod
 	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True):
@@ -68,10 +73,11 @@ class Quantizer:
 
 		#Store meta-data (we invert the scale for dequantization)
 		meta = {'nbits':nbits, 'group_size':group_size, 'shape':shape, 'scale':1./scale, 'zero':zero, 'axis':axis, 'packing':Quantizer.bit_to_packing[nbits]}
-
+		meta['unpack_view_dtype'] = Quantizer.unpack_view_dtype[meta['packing']]
+  
 		#Pack bits
 		if(bitpack):
-			W_q = Quantizer.pack[meta['packing']](W_q)
+			W_q = Quantizer.pack[meta['packing']](W_q).view(torch.float32) # store quantized weights as float32
 		else:
 			W_q = W_q.to(tensor.dtype) 
 			meta['packing'] = None
@@ -87,7 +93,7 @@ class Quantizer:
 	def dequantize(cls, W_q, meta):
 		compute_dtype = meta['compute_dtype'] if ('compute_dtype' in meta) else torch.float16
 		if(meta['packing']):
-			W_r = Quantizer.unpack[meta['packing']](W_q).to(compute_dtype)
+			W_r = Quantizer.unpack[meta['packing']](W_q.view(meta['unpack_view_dtype'])).to(compute_dtype)
 			if((meta['group_size'] is not None) and (meta['nbits']==3)):
 				W_r = W_r[:meta['group_size']] if (meta['axis']==0) else W_r[:,:meta['group_size']]
 		else:
@@ -246,7 +252,7 @@ class HQQMatmulCachedDeq(torch.autograd.Function):
 class HQQLinear(torch.nn.Module):
 	backend = HQQBackend.PYTORCH #Default
 
-	def __init__(self, linear_layer, quant_config, del_orig=True, compute_dtype=torch.float16, device_n=0):
+	def __init__(self, linear_layer, quant_config, del_orig=True, compute_dtype=torch.float16, device_n=0, initialize=True):
 		super().__init__()
 		self.ready         = False
 		self.in_gpu        = False
@@ -255,17 +261,22 @@ class HQQLinear(torch.nn.Module):
 		self.device_n      = device_n
 		self.compute_dtype = compute_dtype
 		self.quant_config  = copy.deepcopy(quant_config)
+		self.del_orig = del_orig
 		self.offload_meta  = self.quant_config.pop('offload_meta') if (self.quant_config is not None) else None
 		
 		self.set_backend(HQQLinear.backend) #Default backend
 
-		if(linear_layer is not None):
-			self.bias = None if (linear_layer.bias==None) else linear_layer.bias.to(self.compute_dtype).cuda()
-			self.quantize(linear_layer.weight.data, **self.quant_config)
+		self.linear_layer = linear_layer
+		self.bias = None if (self.linear_layer.bias==None) else self.linear_layer.bias.to(self.compute_dtype).cuda()
+		if(initialize): self.initialize()
+  
+	def initialize(self):
+		if(self.linear_layer is not None):
+			self.quantize(self.linear_layer.weight.data, **self.quant_config)
 
-		if(del_orig): del linear_layer
+		if(self.del_orig): del self.linear_layer
 		torch.cuda.empty_cache()
-
+  
 	#Set backends
 	@classmethod
 	def set_backend(cls, backend: HQQBackend):
@@ -443,6 +454,12 @@ class HQQLinear(torch.nn.Module):
 			else:
 				meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero']);  del_keys.append('zero')
 		
+		# print("Dtype and shape:", W_q.shape, W_q.dtype)
+		
+		if meta['packing']: W_q = W_q.view(meta['unpack_view_dtype'])
+
+		# print("Dtype and shape:", W_q.shape, W_q.dtype)
+  
 		W_est = self.dequantize_Wq_aten(W_q, meta)
 
 		#Cleanup
