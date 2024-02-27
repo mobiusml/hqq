@@ -32,7 +32,7 @@ class Quantizer:
 						 '2bit_u8':torch.uint8}
 
 	@classmethod
-	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True):
+	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True, view_as_float=True):
 		assert nbits in Quantizer.SUPPORTED_BITS, "nbits=" + str(nbits) + " not supported."
 		assert axis in [0, 1], "axis should be either 0 or 1"
 		if(group_size is not None):
@@ -77,7 +77,8 @@ class Quantizer:
   
 		#Pack bits
 		if(bitpack):
-			W_q = Quantizer.pack[meta['packing']](W_q).view(torch.float32) # store quantized weights as float32
+			W_q = Quantizer.pack[meta['packing']](W_q)
+			if view_as_float: W_q = W_q.view(torch.float32) # store quantized weights as float32
 		else:
 			W_q = W_q.to(tensor.dtype) 
 			meta['packing'] = None
@@ -90,10 +91,11 @@ class Quantizer:
 
 	#Main dequantization: bit_unpacking > (W_q - z)*s > reshape
 	@classmethod
-	def dequantize(cls, W_q, meta):
+	def dequantize(cls, W_q, meta, view_as_float=True):
 		compute_dtype = meta['compute_dtype'] if ('compute_dtype' in meta) else torch.float16
 		if(meta['packing']):
-			W_r = Quantizer.unpack[meta['packing']](W_q.view(meta['unpack_view_dtype'])).to(compute_dtype)
+			if view_as_float: W_q = W_q.view(meta['unpack_view_dtype'])
+			W_r = Quantizer.unpack[meta['packing']](W_q).to(compute_dtype)
 			if((meta['group_size'] is not None) and (meta['nbits']==3)):
 				W_r = W_r[:meta['group_size']] if (meta['axis']==0) else W_r[:,:meta['group_size']]
 		else:
@@ -353,11 +355,11 @@ class HQQLinear(torch.nn.Module):
 		meta.update({'quant_scale':quant_scale, 'quant_zero':quant_zero})
 
 		if(meta['quant_zero']):
-			meta['zero_q'], meta['meta_zero']    = Quantizer.quantize(meta['zero'],  **zero_quant_params);  del meta['zero']
+			meta['zero_q'], meta['meta_zero']    = Quantizer.quantize(meta['zero'], view_as_float=False, **zero_quant_params);  del meta['zero']
 			meta['meta_zero']['compute_dtype']   = self.compute_dtype
 
 		if(meta['quant_scale']):
-			meta['scale_q'] , meta['meta_scale'] = Quantizer.quantize(meta['scale'], **scale_quant_params); del meta['scale']
+			meta['scale_q'] , meta['meta_scale'] = Quantizer.quantize(meta['scale'], view_as_float=False, **scale_quant_params); del meta['scale']
 			meta['meta_scale']['compute_dtype']  = self.compute_dtype
 
 		self.W_q   = W_q
@@ -382,10 +384,10 @@ class HQQLinear(torch.nn.Module):
 				meta['scale'] = zero_scale[1]; del_keys.append('scale');
 
 		if(meta['quant_zero']):
-			meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero']);  del_keys.append('zero')
+			meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero'], view_as_float=False);  del_keys.append('zero')
 
 		if(meta['quant_scale']):
-			meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
+			meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale'], view_as_float=False); del_keys.append('scale')
 
 		W_est = Quantizer.dequantize(W_q, meta)
 
@@ -446,13 +448,13 @@ class HQQLinear(torch.nn.Module):
 			if(meta['meta_scale']['group_size']):
 				meta['scale'] = self.dequantize_Wq_aten(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
 			else:
-				meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
+				meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale'], view_as_float=False); del_keys.append('scale')
 
 		if(meta['quant_zero']):
 			if(meta['meta_zero']['group_size']):
 				meta['zero'] = self.dequantize_Wq_aten(meta['zero_q'], meta['meta_zero']); del_keys.append('zero')
 			else:
-				meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero']);  del_keys.append('zero')
+				meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero'], view_as_float=False);  del_keys.append('zero')
 		
 		# print("Dtype and shape:", W_q.shape, W_q.dtype)
 		
