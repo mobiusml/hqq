@@ -24,6 +24,19 @@ class TestQuantizer(unittest.TestCase):
         self.assertTrue(torch.equal(norm1, norm2))
         
         
+    def test_quantizer_cuda(self):
+        w_cuda = self.w.cuda()
+        W_q, meta = Quantizer.quantize(w_cuda, round_zero=True, optimize=True, view_as_float=False)
+        w_dq = Quantizer.dequantize(W_q, meta, view_as_float=False)
+        norm1 = torch.norm(w_cuda - w_dq, p=0.7)
+        
+        W_q, meta = Quantizer.quantize(w_cuda, round_zero=True, optimize=True, view_as_float=True)
+        w_dq = Quantizer.dequantize(W_q, meta, view_as_float=True)
+        norm2 = torch.norm(w_cuda - w_dq, p=0.7)
+        
+        self.assertTrue(torch.equal(norm1, norm2))        
+        
+        
     def test_hqq_linear(self):
         
         quant_configs = [
