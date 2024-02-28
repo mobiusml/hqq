@@ -31,6 +31,21 @@ inline torch::Tensor unpack_2bit_u8(torch::Tensor &W_q)
 	return torch::cat({(W_q & 0xC0).__rshift__(6), (W_q & 0x30).__rshift__(4), (W_q & 0x0C).__rshift__(2), W_q & 0x03}, 0);  
 }
 
+inline torch::Tensor unpack_1bit_u8(torch::Tensor &W_q) {
+    return torch::cat(
+    {
+        ((W_q & 0x80).__rshift__(7)),
+        ((W_q & 0x40).__rshift__(6)),
+        ((W_q & 0x20).__rshift__(5)),
+        ((W_q & 0x10).__rshift__(4)),
+        ((W_q & 0x08).__rshift__(3)),
+        ((W_q & 0x04).__rshift__(2)),
+        ((W_q & 0x02).__rshift__(1)),
+        ((W_q & 0x01))
+    }, 0);
+}
+
+
 inline torch::Tensor dequantize(torch::Tensor &W_q, torch::Tensor &scale, torch::Tensor &zero, torch::IntArrayRef &shape, int group_size, int nbits, int axis, std::string packing)
 {
 	torch::Tensor W_q_p;
@@ -40,6 +55,7 @@ inline torch::Tensor dequantize(torch::Tensor &W_q, torch::Tensor &scale, torch:
 	if(packing=="4bit_u8"){W_q_p = unpack_4bit_u8(W_q);}
 	if(packing=="3bit_32"){W_q_p = unpack_3bit_32(W_q);}
 	if(packing=="2bit_u8"){W_q_p = unpack_2bit_u8(W_q);}
+	if(packing=="1bit_u8"){W_q_p = unpack_1bit_u8(W_q);}
 
 	//Check size: 
 	if(group_size>0 && nbits==3)
