@@ -230,6 +230,97 @@ torch::Tensor dequantize_2bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, t
 	return W_r;
 }
 
+/*******************************************************************************************************************************************/
+/************* 1-bit *************/
+/*******************************************************************************************************************************************/
+
+//Simple
+__global__ void unpack_1bit_u8_kernel(unsigned char* Wq_packed, unsigned char* Wq_unpacked, int n) { 
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	if(i>=n) return;
+
+	Wq_unpacked[i]       = (Wq_packed[i] & 0x80) >> 7;  //1st chunk
+	Wq_unpacked[i + n]   = (Wq_packed[i] & 0x40) >> 6;  //2nd chunk
+	Wq_unpacked[i + n*2] = (Wq_packed[i] & 0x20) >> 5;  //3rd chunk	
+	Wq_unpacked[i + n*3] = (Wq_packed[i] & 0x10) >> 4;  //4th chunk	
+	Wq_unpacked[i + n*4] = (Wq_packed[i] & 0x08) >> 3;  //5th chunk	
+	Wq_unpacked[i + n*5] = (Wq_packed[i] & 0x04) >> 2;  //6th chunk	
+	Wq_unpacked[i + n*6] = (Wq_packed[i] & 0x02) >> 1;  //7th chunk	
+	Wq_unpacked[i + n*7] = (Wq_packed[i] & 0x01);       //8th chunk	
+}
+
+torch::Tensor unpack_1bit_u8(torch::Tensor Wq_packed)
+{
+	CHECK_INPUT(Wq_packed);
+
+	int r = 8; //number of elements packed
+	int h = Wq_packed.size(0);
+	int w = Wq_packed.size(1);
+	int n = h*w; //num rows as a packed tensor
+
+	auto Wq_unpacked = torch::empty({h*r, w}, Wq_packed.options()); 
+
+	int blocks = cdiv(n, BLOCK_SIZE);
+	unpack_1bit_u8_kernel<<<blocks, BLOCK_SIZE>>>(Wq_packed.data_ptr<unsigned char>(), Wq_unpacked.data_ptr<unsigned char>(), n);	
+
+	C10_CUDA_KERNEL_LAUNCH_CHECK();
+	//cudaDeviceSynchronize();
+	
+	return Wq_unpacked;
+}
+
+//Simple
+template <typename scalar_t>
+__global__ void dequantize_1bit_u8_kernel(unsigned char* Wq_packed, scalar_t* scale, scalar_t* zero, scalar_t* W_r, int h, int w) { 
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int n = h*w;
+	if(i>=n) return;
+
+	int j        = i % w;
+	W_r[i]       = (scalar_t((Wq_packed[i] & 0x80) >> 7) - zero[j])*scale[j];  //1st chunk
+	W_r[i + n]   = (scalar_t((Wq_packed[i] & 0x40) >> 6) - zero[j])*scale[j];  //2nd chunk
+	W_r[i + n*2] = (scalar_t((Wq_packed[i] & 0x20) >> 5) - zero[j])*scale[j];  //3rd chunk	
+	W_r[i + n*3] = (scalar_t((Wq_packed[i] & 0x10) >> 4) - zero[j])*scale[j];  //4th chunk	
+	W_r[i + n*4] = (scalar_t((Wq_packed[i] & 0x08) >> 3) - zero[j])*scale[j];  //5th chunk	
+	W_r[i + n*5] = (scalar_t((Wq_packed[i] & 0x04) >> 2) - zero[j])*scale[j];  //6th chunk	
+	W_r[i + n*6] = (scalar_t((Wq_packed[i] & 0x02) >> 1) - zero[j])*scale[j];  //7th chunk	
+	W_r[i + n*7] = (scalar_t((Wq_packed[i] & 0x01))      - zero[j])*scale[j];  //8th chunk	
+
+}
+
+torch::Tensor dequantize_1bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero)
+{
+	CHECK_INPUT(Wq_packed);
+	CHECK_INPUT(scale);
+	CHECK_INPUT(zero);
+
+	int r      = 8; //number of elements packed
+	int h      = Wq_packed.size(0);
+	int w      = Wq_packed.size(1);
+	int n      = h*w; //num rows as a packed tensor
+
+	auto dev   = Wq_packed.device();
+	auto dtype = scale.dtype();
+	auto W_r   = torch::empty({r*h, w}, torch::TensorOptions().dtype(dtype).device(dev)); 
+
+	int blocks = cdiv(n, BLOCK_SIZE);
+
+	AT_DISPATCHER(W_r.type(), "dequantize_1bit_u8", ([&] {
+		dequantize_1bit_u8_kernel<scalar_t><<<blocks, BLOCK_SIZE>>>(Wq_packed.data_ptr<unsigned char>(), 
+																	scale.data_ptr<scalar_t>(), 
+																	zero.data_ptr<scalar_t>(), 
+																	W_r.data_ptr<scalar_t>(), 
+																	h, w);
+	}));
+
+
+	C10_CUDA_KERNEL_LAUNCH_CHECK();
+	//cudaDeviceSynchronize();
+
+	return W_r;
+}
+
+
 
 /*******************************************************************************************************************************************/
 /************* 3-bit *************/

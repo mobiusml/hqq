@@ -17,6 +17,8 @@ torch::Tensor dequantize_3bit_32(torch::Tensor Wq_packed, torch::Tensor scale, t
 torch::Tensor unpack_2bit_u8(torch::Tensor Wq_packed);
 torch::Tensor dequantize_2bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero);
 
+torch::Tensor unpack_1bit_u8(torch::Tensor Wq_packed);
+torch::Tensor dequantize_1bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero);
 
 /*	scale & zero should be unquantized and already on the target device. 
 	All tensors should be contiguous !!
@@ -34,6 +36,7 @@ inline torch::Tensor dequantize(torch::Tensor &Wq_packed, torch::Tensor &scale, 
 	if(packing=="4bit_u8"){W_r = dequantize_4bit_u8(Wq_packed, scale, zero);}
 	if(packing=="3bit_32"){W_r = dequantize_3bit_32(Wq_packed, scale, zero);}
 	if(packing=="2bit_u8"){W_r = dequantize_2bit_u8(Wq_packed, scale, zero);}
+	if(packing=="1bit_u8"){W_r = dequantize_1bit_u8(Wq_packed, scale, zero);}
 
 	//Check size for 3 bits
 	if(group_size>0 && nbits==3)
@@ -56,6 +59,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
 	m.def("unpack_2bit_u8",     &unpack_2bit_u8,     "unpack_2bit_u8");
 	m.def("dequantize_2bit_u8", &dequantize_2bit_u8, "dequantize_2bit_u8");
+
+	m.def("unpack_1bit_u8",     &unpack_1bit_u8,     "unpack_1bit_u8");
+	m.def("dequantize_1bit_u8", &dequantize_1bit_u8, "dequantize_1bit_u8");
 
 	m.def("dequantize",         &dequantize,         "dequantize");
 }

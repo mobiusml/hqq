@@ -11,25 +11,28 @@ from termcolor import colored
 
 #Main HQQ Quantizer 
 class Quantizer:
-	SUPPORTED_BITS   = [8, 4, 3, 2]
+	SUPPORTED_BITS   = [8, 4, 3, 2, 1]
 	optimize_weights = optimize_weights_proximal
 
-	bit_to_packing   = {8:'8bit_u8', 4:'4bit_u8', 3:'3bit_32', 2:'2bit_u8'}
+	bit_to_packing   = {8:'8bit_u8', 4:'4bit_u8', 3:'3bit_32', 2:'2bit_u8', 1:'1bit_u8'}
 
 	pack  =  {'8bit_u8':BitPack.pack_8bit_u8,
 			  '4bit_u8':BitPack.pack_4bit_u8,
 			  '3bit_32':BitPack.pack_3bit_32,
-			  '2bit_u8':BitPack.pack_2bit_u8}
+			  '2bit_u8':BitPack.pack_2bit_u8,
+			  '1bit_u8':BitPack.pack_1bit_u8}
 
 	unpack = {'8bit_u8':BitPack.unpack_8bit_u8,
 			  '4bit_u8':BitPack.unpack_4bit_u8,
 			  '3bit_32':BitPack.unpack_3bit_32,
-			  '2bit_u8':BitPack.unpack_2bit_u8}
- 
+     		  '2bit_u8':BitPack.unpack_2bit_u8,
+			  '1bit_u8':BitPack.unpack_1bit_u8}
+
 	unpack_view_dtype = {'8bit_u8':torch.uint8,
 						 '4bit_u8':torch.uint8,
 						 '3bit_32':torch.int32,
-						 '2bit_u8':torch.uint8}
+						 '2bit_u8':torch.uint8,
+       					 '1bit_u8':torch.uint8}
 
 	@classmethod
 	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True, compute_dtype=None, view_as_float=True):

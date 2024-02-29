@@ -103,6 +103,27 @@ class BitPack:
 		tmp[9*_step:]        = ((W_q & 0b00000000000000000000000000000111))
 		return tmp
 
+	#1bit
+	################################################
+	@staticmethod
+	def pack_1bit_u8(W_q):
+		W_q   = W_q.to(torch.uint8)
+		_step = int(len(W_q)/8)
+		return (W_q[:_step] << 7 | W_q[_step:2*_step] << 6 | W_q[2*_step:3*_step] << 5 | W_q[3*_step:4*_step] << 4 | W_q[4*_step:5*_step] << 3 | W_q[5*_step:6*_step] << 2 | W_q[6*_step:7*_step] << 1 | W_q[7*_step:])
+
+	@staticmethod
+	def unpack_1bit_u8(W_q):
+		_step                = W_q.shape[0]
+		tmp                  = torch.empty([8*_step, W_q.shape[1]], dtype=torch.uint8, device=W_q.device)
+		tmp[:_step]          = ((W_q & 0b10000000) >> 7)
+		tmp[1*_step:2*_step] = ((W_q & 0b01000000) >> 6)
+		tmp[2*_step:3*_step] = ((W_q & 0b00100000) >> 5)
+		tmp[3*_step:4*_step] = ((W_q & 0b00010000) >> 4)
+		tmp[4*_step:5*_step] = ((W_q & 0b00001000) >> 3)
+		tmp[5*_step:6*_step] = ((W_q & 0b00000100) >> 2)
+		tmp[6*_step:7*_step] = ((W_q & 0b00000010) >> 1)
+		tmp[7*_step:8*_step] = ((W_q & 0b00000001))
+		return tmp
 
 	#Experimental 
 	################################################################################################################
