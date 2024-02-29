@@ -81,13 +81,15 @@ class TestQuantizer(unittest.TestCase):
                 norm3 = torch.norm(self.w.cuda() - w_dqs[2], p=0.7)
                 norm4 = torch.norm(self.w.cuda() - w_dqs[3], p=0.7)
                 norm5 = torch.norm(self.w.cuda() - w_dqs[4], p=0.7)
+                norm6 = torch.norm(self.w.cuda() - w_dqs[5], p=0.7)
                 
-                print(f"norm1={norm1}, norm2={norm2}, norm3={norm3}, norm4={norm4}, norm5={norm5}")
+                print(f"norm1={norm1}, norm2={norm2}, norm3={norm3}, norm4={norm4}, norm5={norm5}, norm6={norm6}")
                 
                 assert torch.isclose(norm1, norm2, rtol=1e-2)
                 assert torch.isclose(norm1, norm3, rtol=1e-2)
                 assert torch.isclose(norm1, norm4, rtol=1e-2)
                 assert torch.isclose(norm1, norm5, rtol=1e-2)
+                assert torch.isclose(norm1, norm6, rtol=1e-2)
         
 if __name__ == '__main__':
     unittest.main()
