@@ -32,7 +32,7 @@ class Quantizer:
 						 '2bit_u8':torch.uint8}
 
 	@classmethod
-	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True, view_as_float=True):
+	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True, compute_dtype=None, view_as_float=True):
 		assert nbits in Quantizer.SUPPORTED_BITS, "nbits=" + str(nbits) + " not supported."
 		assert axis in [0, 1], "axis should be either 0 or 1"
 		if(group_size is not None):
@@ -78,7 +78,7 @@ class Quantizer:
 		#Pack bits
 		if(bitpack):
 			W_q = Quantizer.pack[meta['packing']](W_q)
-			if view_as_float: W_q = W_q.view(torch.float32) # store quantized weights as float32
+			if view_as_float: W_q = W_q.view(torch.float32 if compute_dtype is None else compute_dtype) # store quantized weights as compute_dtype
 		else:
 			W_q = W_q.to(tensor.dtype) 
 			meta['packing'] = None
@@ -351,7 +351,7 @@ class HQQLinear(torch.nn.Module):
 		self.in_features, self.out_features = W.t().shape
 		
 		#Quantize
-		W_q , meta = Quantizer.quantize(W, **weight_quant_params) 
+		W_q , meta = Quantizer.quantize(W, compute_dtype=self.compute_dtype, **weight_quant_params)
 		meta.update({'quant_scale':quant_scale, 'quant_zero':quant_zero})
 
 		if(meta['quant_zero']):
