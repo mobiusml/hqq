@@ -15,7 +15,7 @@ class TestQuantizer(unittest.TestCase):
     
     def test_quantizer(self):    
         for compute_dtype in [torch.float32, torch.float16, torch.bfloat16]:
-            for nbits in [8,4,3,2]:
+            for nbits in [8,4,3,2,1]:
                 W_q, meta = Quantizer.quantize(self.w, nbits=nbits, round_zero=True, optimize=True, view_as_float=False)
                 if nbits == 3:
                     assert W_q.dtype == torch.int32
