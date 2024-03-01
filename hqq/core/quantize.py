@@ -17,25 +17,25 @@ class Quantizer:
 	bit_to_packing   = {8:'8bit_u8', 4:'4bit_u8', 3:'3bit_32', 2:'2bit_u8', 1:'1bit_u8'}
 
 	pack  =  {'8bit_u8':BitPack.pack_8bit_u8,
-				'4bit_u8':BitPack.pack_4bit_u8,
-				'3bit_32':BitPack.pack_3bit_32,
-				'2bit_u8':BitPack.pack_2bit_u8,
-				'1bit_u8':BitPack.pack_1bit_u8}
+			  '4bit_u8':BitPack.pack_4bit_u8,
+			  '3bit_32':BitPack.pack_3bit_32,
+			  '2bit_u8':BitPack.pack_2bit_u8,
+			  '1bit_u8':BitPack.pack_1bit_u8}
 
 	unpack = {'8bit_u8':BitPack.unpack_8bit_u8,
-				'4bit_u8':BitPack.unpack_4bit_u8,
-				'3bit_32':BitPack.unpack_3bit_32,
-				'2bit_u8':BitPack.unpack_2bit_u8,
-				'1bit_u8':BitPack.unpack_1bit_u8}
+			  '4bit_u8':BitPack.unpack_4bit_u8,
+			  '3bit_32':BitPack.unpack_3bit_32,
+			  '2bit_u8':BitPack.unpack_2bit_u8,
+			  '1bit_u8':BitPack.unpack_1bit_u8}
 
 	unpack_view_dtype = {'8bit_u8':torch.uint8,
-							'4bit_u8':torch.uint8,
-							'3bit_32':torch.int32,
-							'2bit_u8':torch.uint8,
-							'1bit_u8':torch.uint8}
+						 '4bit_u8':torch.uint8,
+						 '3bit_32':torch.int32,
+						 '2bit_u8':torch.uint8,
+						 '1bit_u8':torch.uint8}
 
 	@classmethod
-	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True, compute_dtype=None, view_as_float=True):
+	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True, compute_dtype=None, view_as_float=False):
 		assert nbits in Quantizer.SUPPORTED_BITS, "nbits=" + str(nbits) + " not supported."
 		assert axis in [0, 1], "axis should be either 0 or 1"
 		if(group_size is not None):
@@ -79,6 +79,7 @@ class Quantizer:
 		meta['unpack_view_dtype'] = Quantizer.unpack_view_dtype[meta['packing']]
   
 		#Pack bits
+		meta['view_as_float'] = view_as_float
 		if(bitpack):
 			W_q = Quantizer.pack[meta['packing']](W_q)
 			if view_as_float: W_q = W_q.view(torch.float32 if compute_dtype is None else compute_dtype) # store quantized weights as compute_dtype
@@ -94,10 +95,10 @@ class Quantizer:
 
 	#Main dequantization: bit_unpacking > (W_q - z)*s > reshape
 	@classmethod
-	def dequantize(cls, W_q, meta, view_as_float=True):
+	def dequantize(cls, W_q, meta):
 		compute_dtype = meta['compute_dtype'] if ('compute_dtype' in meta) else torch.float16
 		if(meta['packing']):
-			if view_as_float: W_q = W_q.view(meta['unpack_view_dtype'])
+			if meta['view_as_float']: W_q = W_q.view(meta['unpack_view_dtype'])
 			W_r = Quantizer.unpack[meta['packing']](W_q).to(compute_dtype)
 			if((meta['group_size'] is not None) and (meta['nbits']==3)):
 				W_r = W_r[:meta['group_size']] if (meta['axis']==0) else W_r[:,:meta['group_size']]
@@ -266,18 +267,19 @@ class HQQLinear(torch.nn.Module):
 		self.device_n      = device_n
 		self.compute_dtype = compute_dtype
 		self.quant_config  = copy.deepcopy(quant_config)
-		self.del_orig = del_orig
+		self.del_orig      = del_orig
 		self.offload_meta  = self.quant_config.pop('offload_meta') if (self.quant_config is not None) else None
 		
 		self.set_backend(HQQLinear.backend) #Default backend
 
 		self.linear_layer = linear_layer
-		self.bias = None if (self.linear_layer.bias==None) else self.linear_layer.bias.to(self.compute_dtype).cuda()
+
 		if(initialize): self.initialize()
   
 	def initialize(self):
 		if(self.linear_layer is not None):
 			self.quantize(self.linear_layer.weight.data, **self.quant_config)
+			self.bias = None if (self.linear_layer.bias==None) else self.linear_layer.bias.to(self.compute_dtype).cuda()
 
 		if(self.del_orig): del self.linear_layer
 		torch.cuda.empty_cache()
@@ -326,13 +328,30 @@ class HQQLinear(torch.nn.Module):
 	def half(self, *args, **kwargs):
 		return self 
 
-	def state_dict(self):
+	def state_dict(self, *args, **kwargs):
 		return {'W_q':self.W_q, 'meta':self.meta, 'bias':self.bias}
 
 	def load_state_dict(self, state_dict):
 		self.W_q    = state_dict['W_q']
 		self.meta   = state_dict['meta']
 		self.bias   = state_dict['bias'] if ('bias' in state_dict) else None
+
+		#Float view settings
+		if('unpack_view_dtype' not in self.meta):
+			self.meta['unpack_view_dtype'] = Quantizer.unpack_view_dtype[self.meta['packing']]
+
+		if('view_as_float' not in self.meta):
+			self.meta['view_as_float'] = False
+
+		if('meta_scale' in self.meta):
+			if('view_as_float' not in self.meta['meta_scale']):
+				self.meta['meta_scale']['view_as_float'] = False
+
+		if('meta_zero' in self.meta):
+			if('view_as_float' not in self.meta['meta_zero']):
+				self.meta['meta_zero']['view_as_float'] = False
+
+		#Check GPU
 		self.in_gpu = self.W_q.device.type == 'cuda'
 		if(self.in_gpu): 
 			if('zero' in self.meta):
@@ -387,10 +406,10 @@ class HQQLinear(torch.nn.Module):
 				meta['scale'] = zero_scale[1]; del_keys.append('scale');
 
 		if(meta['quant_zero']):
-			meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero'], view_as_float=False);  del_keys.append('zero')
+			meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero']);  del_keys.append('zero')
 
 		if(meta['quant_scale']):
-			meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale'], view_as_float=False); del_keys.append('scale')
+			meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
 
 		W_est = Quantizer.dequantize(W_q, meta)
 
@@ -428,6 +447,7 @@ class HQQLinear(torch.nn.Module):
 	#Requires building the aten backend
 	@torch.jit.ignore
 	def dequantize_Wq_aten(self, W_q, meta):
+		if meta['view_as_float']: W_q = W_q.view(meta['unpack_view_dtype'])
 		return hqq_aten.dequantize(W_q, meta['scale'], meta['zero'], meta['shape'], meta['group_size'] if (meta['group_size']) else -1, meta['nbits'], meta['axis'], meta['packing'])
 
 	def dequantize_aten(self):
@@ -451,20 +471,14 @@ class HQQLinear(torch.nn.Module):
 			if(meta['meta_scale']['group_size']):
 				meta['scale'] = self.dequantize_Wq_aten(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
 			else:
-				meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale'], view_as_float=False); del_keys.append('scale')
+				meta['scale'] = Quantizer.dequantize(meta['scale_q'], meta['meta_scale']); del_keys.append('scale')
 
 		if(meta['quant_zero']):
 			if(meta['meta_zero']['group_size']):
 				meta['zero'] = self.dequantize_Wq_aten(meta['zero_q'], meta['meta_zero']); del_keys.append('zero')
 			else:
-				meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero'], view_as_float=False);  del_keys.append('zero')
-		
-		# print("Dtype and shape:", W_q.shape, W_q.dtype)
-		
-		if meta['packing']: W_q = W_q.view(meta['unpack_view_dtype'])
-
-		# print("Dtype and shape:", W_q.shape, W_q.dtype)
-  
+				meta['zero']  = Quantizer.dequantize(meta['zero_q'],  meta['meta_zero']);  del_keys.append('zero')
+		  
 		W_est = self.dequantize_Wq_aten(W_q, meta)
 
 		#Cleanup
@@ -523,11 +537,11 @@ class HQQLinear(torch.nn.Module):
 	# 	return hqq_aten.forward_with_quant(*args)
 
 
-def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=False, offload_meta=False):
+def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=False, offload_meta=False, view_as_float=False):
 	assert nbits in Quantizer.SUPPORTED_BITS, "nbits value not supported. Check Quantizer.SUPPORTED_BITS."
 	if(group_size is not None):
 		assert is_divisible(group_size, 8), "Invalid group_size param: the value should be a multiple of 8." 
-	weight_quant_params = {'nbits':nbits,'channel_wise':True,  'group_size':group_size, 'optimize':True, 'round_zero':True if nbits==4 else False} 
+	weight_quant_params = {'nbits':nbits,'channel_wise':True,  'group_size':group_size, 'optimize':True, 'round_zero':True if nbits==4 else False, 'view_as_float':view_as_float} 
 
 	if(offload_meta):
 		if((quant_scale!=quant_zero)):
@@ -540,7 +554,6 @@ def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=F
 	else:
 		scale_quant_params  = {'nbits':8, 'channel_wise':True,  'group_size':128,  'optimize':False} if (quant_scale) else None
 		zero_quant_params   = {'nbits':8, 'channel_wise':False, 'group_size':None, 'optimize':False} if (quant_zero)  else None
-
 
 	return {'weight_quant_params':weight_quant_params, 'scale_quant_params':scale_quant_params, 'zero_quant_params':zero_quant_params, 'offload_meta':offload_meta}
 
