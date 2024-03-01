@@ -15,10 +15,21 @@ tokenizer  = AutoTokenizer.from_pretrained(model_id,       cache_dir=cache_path)
 
 #Quantize params
 from hqq.core.quantize import *
+
+# #Mixtral-8x7B-Instruct-v0.1-hf-attn-4bit-moe-2bit-metaoffload-HQQ ~13.5GB
+# attn_prams     = BaseQuantizeConfig(nbits=4, group_size=64, offload_meta=True) 
+# experts_params = BaseQuantizeConfig(nbits=2, group_size=16, offload_meta=True) 
+# zero_scale_group_size = 128
+
+#Mixtral-8x7B-Instruct-v0.1-hf-attn-4bit-moe-2bitgs8-metaoffload-HQQ ~13.6GB
 attn_prams     = BaseQuantizeConfig(nbits=4, group_size=64, offload_meta=True) 
-experts_params = BaseQuantizeConfig(nbits=2, group_size=16, offload_meta=True) 
-attn_prams['scale_quant_params']['group_size'] = 256
-attn_prams['zero_quant_params']['group_size']  = 256
+experts_params = BaseQuantizeConfig(nbits=2, group_size=8, offload_meta=True) 
+zero_scale_group_size = 128 
+
+# #Mixtral-8x7B-Instruct-v0.1-hf-attn-4bit-moe-3bit-metaoffload-HQQ ~22.3GB
+# attn_prams     = BaseQuantizeConfig(nbits=4, group_size=64, offload_meta=True) 
+# experts_params = BaseQuantizeConfig(nbits=3, group_size=64, offload_meta=True) 
+# zero_scale_group_size = 128
 
 quant_config = {}
 #Attention
