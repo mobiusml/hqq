@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='hqq',
-    version='0.1.4', 
+    version='0.1.5', 
     description='Half-Quadratic Quantization (HQQ)',
     url='https://github.com/mobiusml/hqq/',
     author='Dr. Hicham Badri',

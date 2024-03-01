@@ -262,6 +262,8 @@ PeftUtils.cast_lora_weights(model, dtype=torch.half)
 
 We provide a complete example to train a model with HQQ/LoRA that you can find in ```examples/lora/train_hqq_lora_example.py```.
 
+If you want to use muti-gpu training via FSDP, you can follow the example provided by Answer.AI: https://github.com/AnswerDotAI/fsdp_qlora/blob/scaling_experiments/train.py 
+
 ### Examples 
 We provide a variety of examples demonstrating model quantization across different backends within the ```examples```  directory.
 
