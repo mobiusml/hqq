@@ -94,7 +94,8 @@ def optimize_weights_proximal_v2(tensor, scale, zero, min_max, axis=0, device='c
 	assert iters>1,     "iters should be > 1"
 
 	#Cast/device
-	dtype      = torch.float16 if (device=='cuda') else torch.float32
+	device     = torch.device(device)
+	dtype      = torch.float16 if (device.type=='cuda') else torch.float32
 	W_f        = tensor.to(dtype).to(device)
 	scale      = scale.to(dtype).to(device)
 	zero       = zero.to(dtype).to(device)
@@ -147,7 +148,8 @@ def optimize_weights_proximal_v2(tensor, scale, zero, min_max, axis=0, device='c
 def optimize_weights_proximal_legacy(tensor, scale, zero, min_max, axis=0, device='cuda', opt_params={'lp_norm':0.7, 'beta':1e1, 'kappa':1.01, 'iters':20}, verbose=False):
 	lp_norm, beta, kappa, iters = opt_params['lp_norm'], opt_params['beta'], opt_params['kappa'], opt_params['iters']
 
-	dtype  = torch.float16 if (device=='cuda') else torch.float32
+	device = torch.device(device)
+	dtype  = torch.float16 if (device.type=='cuda') else torch.float32
 	W_f    = tensor.to(dtype).to(device)
 	scale  = scale.to(dtype).to(device)
 	zero   = zero.to(dtype).to(device)
