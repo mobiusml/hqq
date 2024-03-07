@@ -64,8 +64,8 @@ class HQQLLM(_Parent, HQQWrapper):
 			workers[i].model = workers[i].model.half().cuda(i)
 		return self
 
-	def quantize_model(self, quant_config, compute_dtype):
-		return self.quantize_model_(model=self, quant_config=quant_config, compute_dtype=compute_dtype)
+	def quantize_model(self, quant_config, compute_dtype=torch.float16, device='cuda'):
+		return self.quantize_model_(model=self, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
 	def save_quantized(self, save_dir):
 		return self.save_quantized_(model=self, save_dir=save_dir) 

@@ -26,7 +26,7 @@ class HQQtimm(HQQWrapper):
 	def _make_quantizable(cls, model, quantized):
 		model.hqq_quantized  = quantized
 		model.arch_key       = model.default_cfg['architecture']
-		model.quantize_model = lambda quant_config, compute_dtype=torch.float16: cls.quantize_model_(model=model, quant_config=quant_config, compute_dtype=compute_dtype)
+		model.quantize_model = lambda quant_config, compute_dtype=torch.float16, device='cuda': cls.quantize_model_(model=model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 		model.save_quantized = lambda save_dir: cls.save_quantized_(model=model, save_dir=save_dir)
 		model.cuda           = lambda *args, **kwargs: model if(quantized) else model.cuda
 		model.to             = lambda *args, **kwargs: model if(quantized) else model.to

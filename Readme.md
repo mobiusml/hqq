@@ -26,8 +26,9 @@ from hqq.core.quantize import *
 #Quantization settings
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_zero=True, quant_scale=False)
 #Replace your linear layer 
-hqq_layer = HQQLinear(your_linear_layer, quant_config, del_orig=True)
+hqq_layer = HQQLinear(your_linear_layer, quant_config, compute_dtype=torch.float16, device='cuda', del_orig=True)
 #del_orig=True will remove the original linear layer from memory
+#You can specify the CUDA device on which you want to quantize the model
 ```
 
 The quantization parameters are set as follows:
@@ -93,7 +94,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 ######################
 from hqq.core.quantize import *
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16) 
+model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16, device='cuda') 
 
 #Optional: set backend
 ######################
@@ -104,8 +105,8 @@ You can save/load a quantized model as follows:
 ```Python
 #Save the quantized model
 model.save_quantized(model, save_dir=save_dir)
-#Load from local directory or Hugging Face Hub
-model = HQQModelForCausalLM.from_quantized(save_dir_or_hfhub)
+#Load from local directory or Hugging Face Hub on a specific device
+model = HQQModelForCausalLM.from_quantized(save_dir_or_hfhub, device='cuda')
 ```
 
 Alternatively, you can also work with models created via ```transformers.AutoModelForCausalLM```:
@@ -113,7 +114,7 @@ Alternatively, you can also work with models created via ```transformers.AutoMod
 from transformers import AutoModelForCausalLM
 model = AutoModelForCausalLM.from_pretrained(model_id) 
 #Quantize
-HQQModelForCausalLM.quantize_model_(model, quant_config=quant_config)
+HQQModelForCausalLM.quantize_model_(model, quant_config=quant_config, device='cuda')
 ```
 
 For multimodal models, you can quantize the models separately. Here's an example that quantizes the Llama language model in Llava:
@@ -238,7 +239,7 @@ You can use HQQ for lora training as follows:
 #First, quantize/load a quantized HQQ model the
 from hqq.core.peft import PeftUtils
 
-base_lora_params = {'lora_type':'default', 'r':32, 'lora_alpha':64, 'dropout':0.05, 'train_dtype':torch.bfloat16}
+base_lora_params = {'lora_type':'default', 'r':32, 'lora_alpha':64, 'dropout':0.05, 'train_dtype':torch.float32}
 lora_params      = {'self_attn.q_proj': base_lora_params,
                     'self_attn.k_proj': base_lora_params,
                     'self_attn.v_proj': base_lora_params,
@@ -257,7 +258,7 @@ HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 
 #Convert lora weights to the same model dtype for faster inference
 model.eval()
-PeftUtils.cast_lora_weights(model, dtype=torch.half)
+PeftUtils.cast_lora_weights(model, dtype=torch.float16)
 ```
 
 We provide a complete example to train a model with HQQ/LoRA that you can find in ```examples/lora/train_hqq_lora_example.py```.
