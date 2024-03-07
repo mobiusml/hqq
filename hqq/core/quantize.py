@@ -35,7 +35,7 @@ class Quantizer:
 						 '1bit_u8':torch.uint8}
 
 	@classmethod
-	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True, compute_dtype=None, view_as_float=False):
+	def quantize(cls, tensor, nbits=4, channel_wise=True, group_size=64, optimize=False, round_zero=False, axis=0, bitpack=True, compute_dtype=None, view_as_float=False, device='cuda'):
 		assert nbits in Quantizer.SUPPORTED_BITS, "nbits=" + str(nbits) + " not supported."
 		assert axis in [0, 1], "axis should be either 0 or 1"
 		if(group_size is not None):
@@ -68,7 +68,7 @@ class Quantizer:
 		if(round_zero): zero = torch.round(zero)
 		
 		#Fine-tune weights
-		if(optimize): scale, zero = Quantizer.optimize_weights(tensor=W, scale=scale, zero=zero, min_max=min_max, axis=axis)
+		if(optimize): scale, zero = Quantizer.optimize_weights(tensor=W, scale=scale, zero=zero, min_max=min_max, axis=axis, device=device)
 
 		#Quantize
 		scale, zero = scale.clone(), zero.clone() #Necessary for fake quantization backprop
@@ -279,7 +279,7 @@ class HQQLinear(torch.nn.Module):
 	def initialize(self):
 		if(self.linear_layer is not None):
 			self.quantize(self.linear_layer.weight.data, **self.quant_config)
-			self.bias = None if (self.linear_layer.bias==None) else self.linear_layer.bias.to(self.compute_dtype).cuda()
+			self.bias = None if (self.linear_layer.bias==None) else self.linear_layer.bias.to(self.compute_dtype).cuda(self.device_n)
 
 		if(self.del_orig): del self.linear_layer
 		torch.cuda.empty_cache()
@@ -369,19 +369,20 @@ class HQQLinear(torch.nn.Module):
 	def quantize(self, W, weight_quant_params, scale_quant_params, zero_quant_params):
 		quant_scale = scale_quant_params is not None
 		quant_zero  = zero_quant_params  is not None
+		device      = 'cuda:' + str(self.device_n) if self.device is None else self.device
 
 		self.in_features, self.out_features = W.t().shape
 		
 		#Quantize
-		W_q , meta = Quantizer.quantize(W, compute_dtype=self.compute_dtype, **weight_quant_params)
+		W_q , meta = Quantizer.quantize(W, compute_dtype=self.compute_dtype, device=device, **weight_quant_params)
 		meta.update({'quant_scale':quant_scale, 'quant_zero':quant_zero})
 
 		if(meta['quant_zero']):
-			meta['zero_q'], meta['meta_zero']    = Quantizer.quantize(meta['zero'], view_as_float=False, **zero_quant_params);  del meta['zero']
+			meta['zero_q'], meta['meta_zero']    = Quantizer.quantize(meta['zero'], view_as_float=False, device=device, **zero_quant_params);  del meta['zero']
 			meta['meta_zero']['compute_dtype']   = self.compute_dtype
 
 		if(meta['quant_scale']):
-			meta['scale_q'] , meta['meta_scale'] = Quantizer.quantize(meta['scale'], view_as_float=False, **scale_quant_params); del meta['scale']
+			meta['scale_q'] , meta['meta_scale'] = Quantizer.quantize(meta['scale'], view_as_float=False, device=device, **scale_quant_params); del meta['scale']
 			meta['meta_scale']['compute_dtype']  = self.compute_dtype
 
 		self.W_q   = W_q
