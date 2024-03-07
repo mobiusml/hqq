@@ -133,8 +133,8 @@ class Quantizer:
 		return W_q_c, meta_c
 
 	@classmethod
-	def cuda(cls, W_q, meta, device_n=0):
-		return Quantizer.to_inplace(W_q, meta, device='cuda:' + str(device_n))
+	def cuda(cls, W_q, meta, device):
+		return Quantizer.to_inplace(W_q, meta, device=device)
 
 	@classmethod
 	def cpu(cls, W_q, meta):
@@ -258,13 +258,12 @@ class HQQMatmulCachedDeq(torch.autograd.Function):
 class HQQLinear(torch.nn.Module):
 	backend = HQQBackend.PYTORCH #Default
 
-	def __init__(self, linear_layer, quant_config, del_orig=True, compute_dtype=torch.float16, device_n=0, initialize=True):
+	def __init__(self, linear_layer, quant_config, del_orig=True, compute_dtype=torch.float16, device='cuda', initialize=True):
 		super().__init__()
 		self.ready         = False
 		self.in_gpu        = False
-		self.device        = None
 		self.bias          = None
-		self.device_n      = device_n
+		self.device        = device
 		self.compute_dtype = compute_dtype
 		self.quant_config  = copy.deepcopy(quant_config)
 		self.del_orig      = del_orig
@@ -279,7 +278,7 @@ class HQQLinear(torch.nn.Module):
 	def initialize(self):
 		if(self.linear_layer is not None):
 			self.quantize(self.linear_layer.weight.data, **self.quant_config)
-			self.bias = None if (self.linear_layer.bias==None) else self.linear_layer.bias.to(self.compute_dtype).cuda(self.device_n)
+			self.bias = None if (self.linear_layer.bias==None) else self.linear_layer.bias.to(self.compute_dtype).cuda(self.device)
 
 		if(self.del_orig): del self.linear_layer
 		torch.cuda.empty_cache()
@@ -291,33 +290,47 @@ class HQQLinear(torch.nn.Module):
 		cls.forward       = getattr(cls, backend.value)
 
 	#TODO: rewrite this mess 
-	def cuda(self, device_n=0):
+	def cuda(self, device):
 		if(self.in_gpu): return 
 		self.meta['compute_dtype'] = self.compute_dtype 
 
-		self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta, device_n)
+		if(type(self.W_q)==torch.nn.parameter.Parameter):
+			self.W_q.data, self.meta = Quantizer.cuda(self.W_q.data, self.meta, device)
+		else:
+			self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta, device)
 
 		if(self.meta['quant_zero']):
-			self.meta['zero_q'] , self.meta['meta_zero']   = Quantizer.cuda(self.meta['zero_q'], self.meta['meta_zero'], device_n)
+			if('zero_q' in self.meta):
+				self.meta['zero_q'] , self.meta['meta_zero'] = Quantizer.cuda(self.meta['zero_q'], self.meta['meta_zero'], device)
+			else:
+				                 _  , self.meta['meta_zero'] = Quantizer.cuda(None, self.meta['meta_zero'], device)
+		else:
+			self.meta['zero'] = self.meta['zero'].to(device)
 
 		if(self.meta['quant_scale']):
-			self.meta['scale_q'] , self.meta['meta_scale'] = Quantizer.cuda(self.meta['scale_q'], self.meta['meta_scale'], device_n)
+			if('scale_q' in self.meta):
+				self.meta['scale_q'] , self.meta['meta_scale'] = Quantizer.cuda(self.meta['scale_q'], self.meta['meta_scale'], device)
+			else:
+				                 _  , self.meta['meta_scale']  = Quantizer.cuda(None, self.meta['meta_scale'], device)	
+		else:
+			self.meta['scale'] = self.meta['scale'].to(device)				                 		
 		
 		if(self.offload_meta):
-			if(self.meta['quant_scale'] and self.meta['quant_zero']):
-				self.meta['zero_scale'] = torch.stack((self.meta['zero_q'], self.meta['scale_q']))
-				del self.meta['scale_q'], self.meta['zero_q']
-			else:
-				self.meta['zero_scale'] = torch.stack((self.meta['zero'], self.meta['scale'])).to(self.compute_dtype)
-				del self.meta['scale'], self.meta['zero'] 
+			if('zero_scale' not in self.meta):
+				if(self.meta['quant_scale'] and self.meta['quant_zero']):
+					self.meta['zero_scale'] = torch.stack((self.meta['zero_q'], self.meta['scale_q']))
+					del self.meta['scale_q'], self.meta['zero_q']
+				else:
+					self.meta['zero_scale'] = torch.stack((self.meta['zero'], self.meta['scale'])).to(self.compute_dtype)
+					del self.meta['scale'], self.meta['zero'] 
 
 			self.meta['zero_scale'] = self.meta['zero_scale'].contiguous().cpu()
 
 		if(self.bias is not None):
-			self.bias = self.bias.to(self.compute_dtype).cuda(device_n)
+			self.bias = self.bias.to(self.compute_dtype).cuda(device)
 
 		self.W_q    = torch.nn.Parameter(self.W_q, requires_grad=False)
-		self.device = self.W_q.device
+		self.device = device
 		self.in_gpu = True
 
 		torch.cuda.empty_cache()
@@ -336,6 +349,10 @@ class HQQLinear(torch.nn.Module):
 		self.meta   = state_dict['meta']
 		self.bias   = state_dict['bias'] if ('bias' in state_dict) else None
 
+		self.offload_meta = False
+		if('zero_scale' in self.meta):
+			self.offload_meta = True if (self.meta['zero_scale'].device.type=='cpu') else False
+
 		#Float view settings
 		if('unpack_view_dtype' not in self.meta):
 			self.meta['unpack_view_dtype'] = Quantizer.unpack_view_dtype[self.meta['packing']]
@@ -352,42 +369,30 @@ class HQQLinear(torch.nn.Module):
 				self.meta['meta_zero']['view_as_float'] = False
 
 		#Check GPU
-		self.in_gpu = self.W_q.device.type == 'cuda'
-		if(self.in_gpu): 
-			if('zero' in self.meta):
-				self.meta['zero']  = self.meta['zero'].to(self.compute_dtype)
-
-			if('scale' in self.meta):
-				self.meta['scale'] = self.meta['scale'].to(self.compute_dtype)
-
-			if(('zero_scale' in self.meta) and (self.meta['quant_scale']==False) and (self.meta['zero_scale']==False)):
-				self.meta['zero_scale']  = self.meta['zero_scale'].to(self.compute_dtype)
-		else:
-			self.cuda(self.device_n)
+		self.cuda(self.device)
 		self.ready  = True
 
 	def quantize(self, W, weight_quant_params, scale_quant_params, zero_quant_params):
 		quant_scale = scale_quant_params is not None
 		quant_zero  = zero_quant_params  is not None
-		device      = 'cuda:' + str(self.device_n) if self.device is None else self.device
 
 		self.in_features, self.out_features = W.t().shape
 		
 		#Quantize
-		W_q , meta = Quantizer.quantize(W, compute_dtype=self.compute_dtype, device=device, **weight_quant_params)
+		W_q , meta = Quantizer.quantize(W, device=self.device, compute_dtype=self.compute_dtype, **weight_quant_params)
 		meta.update({'quant_scale':quant_scale, 'quant_zero':quant_zero})
 
 		if(meta['quant_zero']):
-			meta['zero_q'], meta['meta_zero']    = Quantizer.quantize(meta['zero'], view_as_float=False, device=device, **zero_quant_params);  del meta['zero']
+			meta['zero_q'], meta['meta_zero']    = Quantizer.quantize(meta['zero'], device=self.device, view_as_float=False, **zero_quant_params);  del meta['zero']
 			meta['meta_zero']['compute_dtype']   = self.compute_dtype
 
 		if(meta['quant_scale']):
-			meta['scale_q'] , meta['meta_scale'] = Quantizer.quantize(meta['scale'], view_as_float=False, device=device, **scale_quant_params); del meta['scale']
+			meta['scale_q'] , meta['meta_scale'] = Quantizer.quantize(meta['scale'], device=self.device, view_as_float=False, **scale_quant_params); del meta['scale']
 			meta['meta_scale']['compute_dtype']  = self.compute_dtype
 
 		self.W_q   = W_q
 		self.meta  = meta 
-		self.cuda(self.device_n)
+		self.cuda(self.device)
 		self.ready = True
 
 	def dequantize(self):
