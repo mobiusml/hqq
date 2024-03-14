@@ -26,7 +26,7 @@ hqq_layer = HQQLinear(your_linear_layer, #torch.nn.Linear or None
                       compute_dtype=torch.float16, #compute dtype
                       device='cuda', #cuda device
                       initialize=True, #Use False to quantize later
-                      del_orig=True #if Ture, delete the original layer
+                      del_orig=True #if True, delete the original layer
                       )
 ```
 
