@@ -81,7 +81,7 @@ First, make sure you have your Hugging Face token properly set via:
 ```
 huggingface-cli login --token <your-token>
 ```
-
+#### Basic Usage
 You can quantize a Hugging Face model as follows:
 ```Python
 from hqq.engine.hf import HQQModelForCausalLM, AutoTokenizer
@@ -113,6 +113,7 @@ model.save_quantized(model, save_dir=save_dir)
 model = HQQModelForCausalLM.from_quantized(save_dir_or_hfhub, device='cuda')
 ```
 
+#### Multimodal
 For multimodal models, you can quantize the models separately. Here's an example that quantizes the Llama language model in Llava:
 ```Python
 #Load the model on CPU
@@ -128,7 +129,9 @@ model     = transformers.LlavaForConditionalGeneration.from_pretrained(model_id,
 from hqq.core.quantize import *
 from hqq.models.hf.llama import LlamaHQQ
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-LlamaHQQ.quantize_model(model.language_model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
+LlamaHQQ.quantize_model(model.language_model, quant_config=quant_config, 
+                                              compute_dtype=compute_dtype, 
+                                              device=device)
 
 #Use fp16 CLIP and tower
 model.vision_tower          = model.vision_tower.to(device=device, dtype=compute_dtype)
@@ -140,12 +143,15 @@ model.vision_tower          = torch.compile(model.vision_tower)
 model.multi_modal_projector = torch.compile(model.multi_modal_projector)
 ```
 
+#### Auto Mode
 If the model architecture is not manally defined in ```hqq/models/hf```, you can try the automatic mode that doesn't require knowing the architecture in advance:
 ```Python
 from hqq.models.hf.base import AutoHQQHFModel
 
 #Quantize
-AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
+AutoHQQHFModel.quantize_model(model, quant_config=quant_config, 
+                                    compute_dtype=compute_dtype, 
+                                    device=device)
 
 #Save
 AutoHQQHFModel.save_quantized(model, save_dir)
@@ -158,6 +164,7 @@ model = AutoHQQHFModel.from_quantized(save_dir)
 By default, VLLM is not installed to avoid CUDA version problems. Make sure you install the right version that matches your CUDA settings (vllm <= 0.2.2): 
 https://docs.vllm.ai/en/latest/getting_started/installation.html 
 
+#### Basic Usage
 After installation, you can quantize VLLM models as follows:
 
 ```Python
@@ -175,6 +182,7 @@ quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
 model.quantize_model(quant_config=quant_config)
 ```
 
+#### Langechain
 Additionally, you can use the quantized model in Langchain (requires ```pip install langchain```) as follows:
 
 ```Python
@@ -240,7 +248,7 @@ quant_config = {k: q2_config for k in linear_tags}
 quant_config['self_attn.v_proj'] = q4_config
 ```
 
-### LoRA Training
+### Peft Training
 You can use HQQ for lora training as follows:
 ```Python
 #First, quantize/load a quantized HQQ model the
