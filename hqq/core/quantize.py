@@ -582,7 +582,7 @@ def hqq_base_quant_config(nbits=4, group_size=64, quant_zero=True, quant_scale=F
 
 	if(offload_meta):
 		if((quant_scale!=quant_zero)):
-			print(colored("quant_zero and quant_scale must be the same when offload_meta is set to True. Setting quant_scale=quant_zero." , 'yellow'))
+			#print(colored("quant_zero and quant_scale must be the same when offload_meta is set to True. Setting quant_scale=quant_zero." , 'yellow'))
 			quant_scale = quant_zero
 
 		scale_quant_params  = {'nbits':8, 'channel_wise':True,  'group_size':128,  'optimize':False} if (quant_scale) else None
