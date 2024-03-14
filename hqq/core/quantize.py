@@ -403,6 +403,9 @@ class HQQLinear(torch.nn.Module):
 		self.cuda(self.device)
 		self.ready  = True
 
+		#Set in_features/out_features
+		self.in_features, self.out_features = self.meta['shape'][::-1]
+
 	def quantize(self, W, weight_quant_params, scale_quant_params, zero_quant_params):
 		quant_scale = scale_quant_params is not None
 		quant_zero  = zero_quant_params  is not None
