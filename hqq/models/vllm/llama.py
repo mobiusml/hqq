@@ -31,51 +31,86 @@ from vllm.model_executor.input_metadata import InputMetadata
 from vllm.model_executor.layers.activation import SiluAndMul
 from vllm.model_executor.layers.attention import PagedAttentionWithRoPE
 from vllm.model_executor.layers.layernorm import RMSNorm
-from vllm.model_executor.layers.linear import (LinearMethodBase,
-                                               MergedColumnParallelLinear,
-                                               QKVParallelLinear,
-                                               RowParallelLinear)
+from vllm.model_executor.layers.linear import (
+    LinearMethodBase,
+    MergedColumnParallelLinear,
+    QKVParallelLinear,
+    RowParallelLinear,
+)
 from vllm.model_executor.layers.sampler import Sampler
 from vllm.model_executor.layers.vocab_parallel_embedding import (
-    VocabParallelEmbedding, ParallelLMHead)
+    VocabParallelEmbedding,
+    ParallelLMHead,
+)
 from vllm.model_executor.parallel_utils.parallel_state import (
-    get_tensor_model_parallel_world_size)
-from vllm.model_executor.weight_utils import (default_weight_loader,
-                                              hf_model_weights_iterator)
+    get_tensor_model_parallel_world_size,
+)
+from vllm.model_executor.weight_utils import (
+    default_weight_loader,
+    hf_model_weights_iterator,
+)
 from vllm.sequence import SamplerOutput
+
+# HQQ imports
+from tqdm import tqdm
+import transformers
+from ..base import BasePatch
+from .base import BaseHQQVLLMModel
 
 KVCache = Tuple[torch.Tensor, torch.Tensor]
 
-import gc
 
 class LlamaMLP(nn.Module):
-
-    def __init__(self, hidden_size: int, intermediate_size: int, hidden_act: str, linear_method: Optional[LinearMethodBase] = None,) -> None:
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+        hidden_act: str,
+        linear_method: Optional[LinearMethodBase] = None,
+    ) -> None:
         super().__init__()
-        
+
         ##############################################################################################
-        self.gate_up_proj = MergedColumnParallelLinear(hidden_size, [intermediate_size] * 2, bias=False, linear_method=linear_method)
-        self.down_proj    = RowParallelLinear(intermediate_size, hidden_size, bias=False, linear_method=linear_method)
+        self.gate_up_proj = MergedColumnParallelLinear(
+            hidden_size,
+            [intermediate_size] * 2,
+            bias=False,
+            linear_method=linear_method,
+        )
+        self.down_proj = RowParallelLinear(
+            intermediate_size, hidden_size, bias=False, linear_method=linear_method
+        )
 
         self.gate_up_proj = self.gate_up_proj.cpu()
-        self.down_proj    = self.down_proj.cpu()
+        self.down_proj = self.down_proj.cpu()
         torch.cuda.empty_cache()
         ##############################################################################################
 
         if hidden_act != "silu":
-            raise ValueError(f"Unsupported activation: {hidden_act}. ""Only silu is supported for now.")
+            raise ValueError(
+                f"Unsupported activation: {hidden_act}. "
+                "Only silu is supported for now."
+            )
         self.act_fn = SiluAndMul()
 
     def forward(self, x):
         gate_up, _ = self.gate_up_proj(x)
-        x          = self.act_fn(gate_up)
-        x, _       = self.down_proj(x)
+        x = self.act_fn(gate_up)
+        x, _ = self.down_proj(x)
         return x
 
 
 class LlamaAttention(nn.Module):
-    def __init__(self, hidden_size: int, num_heads: int, num_kv_heads: int, rope_theta: float = 10000, rope_scaling: Optional[Dict[str, Any]] = None,
-        max_position_embeddings: int = 8192, linear_method: Optional[LinearMethodBase] = None,) -> None:
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int,
+        num_kv_heads: int,
+        rope_theta: float = 10000,
+        rope_scaling: Optional[Dict[str, Any]] = None,
+        max_position_embeddings: int = 8192,
+        linear_method: Optional[LinearMethodBase] = None,
+    ) -> None:
         super().__init__()
         self.hidden_size = hidden_size
         tp_size = get_tensor_model_parallel_world_size()
@@ -100,30 +135,62 @@ class LlamaAttention(nn.Module):
         self.max_position_embeddings = max_position_embeddings
 
         ##############################################################################################
-        self.qkv_proj = QKVParallelLinear(hidden_size, self.head_dim, self.total_num_heads, self.total_num_kv_heads, bias=False, linear_method=linear_method)
+        self.qkv_proj = QKVParallelLinear(
+            hidden_size,
+            self.head_dim,
+            self.total_num_heads,
+            self.total_num_kv_heads,
+            bias=False,
+            linear_method=linear_method,
+        )
 
-        self.o_proj   = RowParallelLinear(self.total_num_heads * self.head_dim, hidden_size, bias=False, linear_method=linear_method)
+        self.o_proj = RowParallelLinear(
+            self.total_num_heads * self.head_dim,
+            hidden_size,
+            bias=False,
+            linear_method=linear_method,
+        )
 
-        self.attn     = PagedAttentionWithRoPE(self.num_heads, self.head_dim, self.scaling, base=self.rope_theta,
-                                           max_position=self.max_position_embeddings, rotary_dim=self.head_dim, 
-                                           num_kv_heads=self.num_kv_heads, rope_scaling=rope_scaling)
+        self.attn = PagedAttentionWithRoPE(
+            self.num_heads,
+            self.head_dim,
+            self.scaling,
+            base=self.rope_theta,
+            max_position=self.max_position_embeddings,
+            rotary_dim=self.head_dim,
+            num_kv_heads=self.num_kv_heads,
+            rope_scaling=rope_scaling,
+        )
 
         self.qkv_proj = self.qkv_proj.cpu()
-        self.o_proj   = self.o_proj.cpu()
+        self.o_proj = self.o_proj.cpu()
         torch.cuda.empty_cache()
         ##############################################################################################
 
-    def forward(self, positions: torch.Tensor, hidden_states: torch.Tensor, kv_cache: KVCache, input_metadata: InputMetadata, cache_event: Optional[torch.cuda.Event]) -> torch.Tensor:
-        qkv, _           = self.qkv_proj(hidden_states)
-        q, k, v          = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
+    def forward(
+        self,
+        positions: torch.Tensor,
+        hidden_states: torch.Tensor,
+        kv_cache: KVCache,
+        input_metadata: InputMetadata,
+        cache_event: Optional[torch.cuda.Event],
+    ) -> torch.Tensor:
+        qkv, _ = self.qkv_proj(hidden_states)
+        q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         k_cache, v_cache = kv_cache
-        attn_output      = self.attn(positions, q, k, v, k_cache, v_cache, input_metadata, cache_event)
-        output, _        = self.o_proj(attn_output)
+        attn_output = self.attn(
+            positions, q, k, v, k_cache, v_cache, input_metadata, cache_event
+        )
+        output, _ = self.o_proj(attn_output)
         return output
 
 
 class LlamaDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig, linear_method: Optional[LinearMethodBase] = None, ) -> None:
+    def __init__(
+        self,
+        config: LlamaConfig,
+        linear_method: Optional[LinearMethodBase] = None,
+    ) -> None:
         super().__init__()
         self.hidden_size = config.hidden_size
         rope_theta = getattr(config, "rope_theta", 10000)
@@ -145,36 +212,62 @@ class LlamaDecoderLayer(nn.Module):
             hidden_act=config.hidden_act,
             linear_method=linear_method,
         )
-        self.input_layernorm         = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = RMSNorm(
+            config.hidden_size, eps=config.rms_norm_eps
+        )
 
-    def forward(self,positions: torch.Tensor,hidden_states: torch.Tensor, kv_cache: KVCache, input_metadata: InputMetadata, 
-                cache_event: Optional[torch.cuda.Event], residual: Optional[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        positions: torch.Tensor,
+        hidden_states: torch.Tensor,
+        kv_cache: KVCache,
+        input_metadata: InputMetadata,
+        cache_event: Optional[torch.cuda.Event],
+        residual: Optional[torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Self Attention
         if residual is None:
             residual = hidden_states
             hidden_states = self.input_layernorm(hidden_states)
         else:
             hidden_states, residual = self.input_layernorm(hidden_states, residual)
-        
-        hidden_states = self.self_attn(positions=positions, hidden_states=hidden_states, kv_cache=kv_cache, input_metadata=input_metadata, cache_event=cache_event)
+
+        hidden_states = self.self_attn(
+            positions=positions,
+            hidden_states=hidden_states,
+            kv_cache=kv_cache,
+            input_metadata=input_metadata,
+            cache_event=cache_event,
+        )
 
         # Fully Connected
         hidden_states, residual = self.post_attention_layernorm(hidden_states, residual)
-        hidden_states           = self.mlp(hidden_states)
+        hidden_states = self.mlp(hidden_states)
         return hidden_states, residual
 
 
 class LlamaModel(nn.Module):
-
-    def __init__(self, config: LlamaConfig, linear_method: Optional[LinearMethodBase] = None,) -> None:
+    def __init__(
+        self,
+        config: LlamaConfig,
+        linear_method: Optional[LinearMethodBase] = None,
+    ) -> None:
         super().__init__()
         self.config = config
-        self.padding_idx  = config.pad_token_id
-        self.vocab_size   = config.vocab_size
-        self.embed_tokens = VocabParallelEmbedding(config.vocab_size,config.hidden_size,)
-        self.layers       = nn.ModuleList([LlamaDecoderLayer(config, linear_method) for _ in range(config.num_hidden_layers)])
-        self.norm         = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.padding_idx = config.pad_token_id
+        self.vocab_size = config.vocab_size
+        self.embed_tokens = VocabParallelEmbedding(
+            config.vocab_size,
+            config.hidden_size,
+        )
+        self.layers = nn.ModuleList(
+            [
+                LlamaDecoderLayer(config, linear_method)
+                for _ in range(config.num_hidden_layers)
+            ]
+        )
+        self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
         self,
@@ -185,40 +278,70 @@ class LlamaModel(nn.Module):
         cache_events: Optional[List[torch.cuda.Event]],
     ) -> torch.Tensor:
         hidden_states = self.embed_tokens(input_ids)
-        residual      = None
+        residual = None
         for i in range(len(self.layers)):
-            cache_event             = None if cache_events is None else cache_events[i]
-            layer                   = self.layers[i]
-            hidden_states, residual = layer(positions, hidden_states, kv_caches[i], input_metadata, cache_event, residual)
+            cache_event = None if cache_events is None else cache_events[i]
+            layer = self.layers[i]
+            hidden_states, residual = layer(
+                positions,
+                hidden_states,
+                kv_caches[i],
+                input_metadata,
+                cache_event,
+                residual,
+            )
 
         hidden_states, _ = self.norm(hidden_states, residual)
         return hidden_states
 
-class LlamaForCausalLM(nn.Module):
 
-    def __init__(self, config: LlamaConfig, linear_method: Optional[LinearMethodBase] = None, dummy_load: bool = True) -> None:
+class LlamaForCausalLM(nn.Module):
+    def __init__(
+        self,
+        config: LlamaConfig,
+        linear_method: Optional[LinearMethodBase] = None,
+        dummy_load: bool = True,
+    ) -> None:
         super().__init__()
 
-        self.config        = config
+        self.config = config
         self.linear_method = linear_method
 
-        #Dummy loading Added
-        self.dummy_load    = dummy_load
-        if(self.dummy_load): return
+        # Dummy loading Added
+        self.dummy_load = dummy_load
+        if self.dummy_load:
+            return
 
-        self.model         = LlamaModel(config, linear_method)
-        self.lm_head       = ParallelLMHead(config.vocab_size, config.hidden_size)
-        self.sampler       = Sampler(config.vocab_size)
+        self.model = LlamaModel(config, linear_method)
+        self.lm_head = ParallelLMHead(config.vocab_size, config.hidden_size)
+        self.sampler = Sampler(config.vocab_size)
 
-    def forward(self, input_ids: torch.Tensor, positions: torch.Tensor, kv_caches: List[KVCache], input_metadata: InputMetadata, cache_events: Optional[List[torch.cuda.Event]]) -> SamplerOutput:
-        if(self.dummy_load): return torch.empty([0]) #Added
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        positions: torch.Tensor,
+        kv_caches: List[KVCache],
+        input_metadata: InputMetadata,
+        cache_events: Optional[List[torch.cuda.Event]],
+    ) -> SamplerOutput:
+        if self.dummy_load:
+            return torch.empty([0])  # Added
 
-        hidden_states = self.model(input_ids, positions, kv_caches, input_metadata, cache_events)
-        next_tokens   = self.sampler(self.lm_head.weight, hidden_states, input_metadata)
+        hidden_states = self.model(
+            input_ids, positions, kv_caches, input_metadata, cache_events
+        )
+        next_tokens = self.sampler(self.lm_head.weight, hidden_states, input_metadata)
         return next_tokens
-    
-    def load_weights(self, model_name_or_path: str, cache_dir: Optional[str] = None, load_format: str = "auto", revision: Optional[str] = None):
-        if(self.dummy_load): return #Added
+
+    def load_weights(
+        self,
+        model_name_or_path: str,
+        cache_dir: Optional[str] = None,
+        load_format: str = "auto",
+        revision: Optional[str] = None,
+    ):
+        if self.dummy_load:
+            return  # Added
 
         stacked_params_mapping = [
             # (param_name, shard_name, shard_id)
@@ -229,80 +352,102 @@ class LlamaForCausalLM(nn.Module):
             ("gate_up_proj", "up_proj", 1),
         ]
         params_dict = dict(self.named_parameters())
-        for name, loaded_weight in hf_model_weights_iterator(model_name_or_path, cache_dir, load_format, revision):
+        for name, loaded_weight in hf_model_weights_iterator(
+            model_name_or_path, cache_dir, load_format, revision
+        ):
             if "rotary_emb.inv_freq" in name:
                 continue
-            for (param_name, weight_name, shard_id) in stacked_params_mapping:
+            for param_name, weight_name, shard_id in stacked_params_mapping:
                 if weight_name not in name:
                     continue
-                param         = params_dict[name.replace(weight_name, param_name)]
+                param = params_dict[name.replace(weight_name, param_name)]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
                 break
             else:
-                param         = params_dict[name]
+                param = params_dict[name]
                 weight_loader = getattr(param, "weight_loader", default_weight_loader)
                 weight_loader(param, loaded_weight)
 
 
 #############################################################################################################################################
 #############################################################################################################################################
-from tqdm import tqdm
-import transformers
-
-from ..base import BasePatch 
 class LLamaPatch(BasePatch):
     @classmethod
     def get_linear_tags(cls):
-        return ['self_attn.qkv_proj', 'self_attn.o_proj', 'mlp.gate_up_proj', 'mlp.down_proj']
+        return [
+            "self_attn.qkv_proj",
+            "self_attn.o_proj",
+            "mlp.gate_up_proj",
+            "mlp.down_proj",
+        ]
 
     @classmethod
     def patch_nonlinearlayers(cls, model, patch_fct, verbose=True):
-        base_model              = model.model
-        model.sampler           = patch_fct(model.sampler)
-        model.lm_head           = patch_fct(model.lm_head)
+        base_model = model.model
+        model.sampler = patch_fct(model.sampler)
+        model.lm_head = patch_fct(model.lm_head)
         base_model.embed_tokens = patch_fct(base_model.embed_tokens)
-        base_model.norm         = patch_fct(base_model.norm)
+        base_model.norm = patch_fct(base_model.norm)
 
         layers = base_model.layers
         for i in tqdm(range(len(base_model.layers)), disable=not verbose):
-            #rotary embed 
-            layers[i].self_attn.attn.rotary_emb.cos_sin_cache = torch.nn.Parameter(layers[i].self_attn.attn.rotary_emb.cos_sin_cache, requires_grad=False)
-            layers[i].self_attn.attn.rotary_emb = patch_fct(layers[i].self_attn.attn.rotary_emb) 
-            layers[i].mlp.act_fn                = patch_fct(layers[i].mlp.act_fn)
-            layers[i].input_layernorm           = patch_fct(layers[i].input_layernorm)
-            layers[i].post_attention_layernorm  = patch_fct(layers[i].post_attention_layernorm)
+            # rotary embed
+            layers[i].self_attn.attn.rotary_emb.cos_sin_cache = torch.nn.Parameter(
+                layers[i].self_attn.attn.rotary_emb.cos_sin_cache, requires_grad=False
+            )
+            layers[i].self_attn.attn.rotary_emb = patch_fct(
+                layers[i].self_attn.attn.rotary_emb
+            )
+            layers[i].mlp.act_fn = patch_fct(layers[i].mlp.act_fn)
+            layers[i].input_layernorm = patch_fct(layers[i].input_layernorm)
+            layers[i].post_attention_layernorm = patch_fct(
+                layers[i].post_attention_layernorm
+            )
 
     @classmethod
     def patch_linearlayers(cls, model, patch_fct, patch_params, verbose=True):
         base_model = model.model
-        layers     = base_model.layers 
+        layers = base_model.layers
         for i in tqdm(range(len(layers)), disable=not verbose):
-            layers[i].self_attn.qkv_proj = patch_fct(layers[i].self_attn.qkv_proj, patch_params['self_attn.qkv_proj'])
-            layers[i].self_attn.o_proj   = patch_fct(layers[i].self_attn.o_proj,   patch_params['self_attn.o_proj'])
-            layers[i].mlp.gate_up_proj   = patch_fct(layers[i].mlp.gate_up_proj,   patch_params['mlp.gate_up_proj'])
-            layers[i].mlp.down_proj      = patch_fct(layers[i].mlp.down_proj,      patch_params['mlp.down_proj'])
+            layers[i].self_attn.qkv_proj = patch_fct(
+                layers[i].self_attn.qkv_proj, patch_params["self_attn.qkv_proj"]
+            )
+            layers[i].self_attn.o_proj = patch_fct(
+                layers[i].self_attn.o_proj, patch_params["self_attn.o_proj"]
+            )
+            layers[i].mlp.gate_up_proj = patch_fct(
+                layers[i].mlp.gate_up_proj, patch_params["mlp.gate_up_proj"]
+            )
+            layers[i].mlp.down_proj = patch_fct(
+                layers[i].mlp.down_proj, patch_params["mlp.down_proj"]
+            )
 
-
-from .base import BaseHQQVLLMModel
-#from ..models.hf.base import init_empty_weights
 
 class LlamaHQQ(LLamaPatch, BaseHQQVLLMModel):
-    #layers to ignore when saving the weights
+    # layers to ignore when saving the weights
     @classmethod
     def get_ignore_layers(cls, model):
-        _tags  = ['', 'model', 'model.layers']
-        _tags += ['model.layers.' + str(i) for i in range(len(model.model.layers))]
-        _tags += ['model.layers.' + str(i) + '.self_attn' for i in range(len(model.model.layers))] 
-        _tags += ['model.layers.' + str(i) + '.self_attn.attn' for i in range(len(model.model.layers))] 
-        _tags += ['model.layers.' + str(i) + '.mlp' for i in range(len(model.model.layers))] 
+        _tags = ["", "model", "model.layers"]
+        _tags += ["model.layers." + str(i) for i in range(len(model.model.layers))]
+        _tags += [
+            "model.layers." + str(i) + ".self_attn"
+            for i in range(len(model.model.layers))
+        ]
+        _tags += [
+            "model.layers." + str(i) + ".self_attn.attn"
+            for i in range(len(model.model.layers))
+        ]
+        _tags += [
+            "model.layers." + str(i) + ".mlp" for i in range(len(model.model.layers))
+        ]
         return _tags
 
-    #Create empty model
+    # Create empty model
     @classmethod
     def create_model(cls, save_dir):
         config = transformers.AutoConfig.from_pretrained(cls.get_config_file(save_dir))
-       #with init_empty_weights(): VLLM models fail with init_empty_weights(), so we load them on the CPU instead
-        model = LlamaForCausalLM(config, dummy_load=False) 
-        #To test
+        # with init_empty_weights(): VLLM models fail with init_empty_weights(), so we load them on the CPU instead
+        model = LlamaForCausalLM(config, dummy_load=False)
+        # To test
         return model
