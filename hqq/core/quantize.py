@@ -297,7 +297,7 @@ class HQQLinear(torch.nn.Module):
 
 	#TODO: rewrite this mess 
 	def cuda(self, device):
-		if(self.in_gpu): return 
+
 		self.meta['compute_dtype'] = self.compute_dtype 
 
 		if(type(self.W_q)==torch.nn.parameter.Parameter):
@@ -341,16 +341,41 @@ class HQQLinear(torch.nn.Module):
 
 		torch.cuda.empty_cache()
 
+		return self
+
 	def to(self, *args, **kwargs):
-		pass
+		#TODO: later
+		return self
+
+	def to_empty(self, device, recurse=True):
+		return self.cuda(device)
+
+	def type(self, dst_type):
+		#TODO: later
+		return self
 
 	def half(self, *args, **kwargs):
 		return self 
 
+	def bfloat16(self, *args, **kwargs):
+		#TODO: later
+		return self 
+
+	def float(self, *args, **kwargs):
+		#TODO: later
+		return self
+
+	def double(self, *args, **kwargs):
+		return self 
+
+	def cpu(self):
+		#TODO: later
+		return self
+
 	def state_dict(self, *args, **kwargs):
 		return {'W_q':self.W_q, 'meta':self.meta, 'bias':self.bias}
 
-	def load_state_dict(self, state_dict):
+	def load_state_dict(self, state_dict, strict=True, assign=False):
 		self.W_q    = state_dict['W_q']
 		self.meta   = state_dict['meta']
 		self.bias   = state_dict['bias'] if ('bias' in state_dict) else None
