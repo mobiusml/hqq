@@ -42,19 +42,16 @@ Additionally, you can set ```offload_meta=True``` to offload the meta-data to th
 
 You can try to change the backend which could speed-up the runtime:
 ```Python
-HQQLinear.set_backend(HQQBackend.PYTORCH)                  #Pytorch backend (default) 
-HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP)         #Same as BACKPROP but supports the backward pass
-HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)          #Compiled Pytorch
-HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP_COMPILE) #Same as PYTORCH_COMPILE, but supports the backward pass
-HQQLinear.set_backend(HQQBackend.ATEN)                     #C++ Aten/Torch backend (CUDA and Pytorch)
-HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)            #Same as ATEN but supports the backward pass 
+HQQLinear.set_backend(HQQBackend.PYTORCH)          #Pytorch backend
+HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)  #Compiled Pytorch via dynamo
+HQQLinear.set_backend(HQQBackend.ATEN)             #C++ Aten/CUDA backend (set automatically by default if available)
 ```
-We recommend you use the ```HQQBackend.ATEN_BACKPROP``` backend for faster processing. You can install as follows:
+We recommend you use the ```HQQBackend.ATEN``` backend for faster processing. You can install as follows:
 ```
 cd hqq/kernels && python setup_cuda.py install;
 ```
 
-The ```HQQBackend.ATEN_BACKPROP``` backend with ```setup_cuda``` uses CUDA kernels for the dequantization step. This leads to a significant speed-up compared to ```PYTORCH_COMPILE``` and can be combined with ```torch.compile(model)``` for even faster runtime:
+Below you can find the speed-up benchmark with various backends, ```HQQBackend.PYTORCH``` being the baseline:
 
  <div class="row"><center>
   <div class="column">

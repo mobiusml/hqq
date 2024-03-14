@@ -141,23 +141,25 @@ class Quantizer:
 		return Quantizer.to_ooplace(W_q, meta, device='cpu')
 
 
-#Main linear layer 
+#Check Aten/CUDA backend if available
+hqq_aten_is_available = False
 try:
 	import hqq_aten
-	print(colored('hqq_aten package available. Set backend to HQQBackend.ATEN for faster inference and HQQBackend.ATEN_BACKPROP for faster training!', 'cyan'))
-except:
+	hqq_aten_is_available = True
+except Exception:
 	hqq_aten = None
+	hqq_aten_is_available = False
+
 
 from enum import Enum
 class HQQBackend(Enum):
 	#Name of the forward functions
-	PYTORCH                  = "forward_pytorch" 
-	PYTORCH_COMPILE          = "forward_pytorch_compile"
-	PYTORCH_BACKPROP         = "forward_pytorch_backprop" 
-	PYTORCH_BACKPROP_COMPILE = "forward_pytorch_backprop_compile" 
-	ATEN                     = "forward_aten"
-	ATEN_BACKPROP            = "forward_aten_backprop"
-
+	PYTORCH                  = "forward_pytorch_backprop" 
+	PYTORCH_BACKPROP         = "forward_pytorch_backprop" #Alias for backward compatibility
+	PYTORCH_COMPILE          = "forward_pytorch_backprop_compile" 
+	PYTORCH_BACKPROP_COMPILE = "forward_pytorch_backprop_compile" #Alias for backward compatibility
+	ATEN                     = "forward_aten_backprop"
+	ATEN_BACKPROP            = "forward_aten_backprop" #Alias for backward compatibility
 
 #No cache: less memory, slower
 class HQQMatmulNoCacheDeq(torch.autograd.Function):
@@ -256,7 +258,11 @@ class HQQMatmulCachedDeq(torch.autograd.Function):
 
 #Main linear layer 
 class HQQLinear(torch.nn.Module):
-	backend = HQQBackend.PYTORCH #Default
+	#Default backend
+	if(hqq_aten_is_available):
+		backend = HQQBackend.ATEN 
+	else:
+		backend = HQQBackend.PYTORCH
 
 	def __init__(self, linear_layer, quant_config, del_orig=True, compute_dtype=torch.float16, device='cuda', initialize=True):
 		super().__init__()
@@ -269,7 +275,7 @@ class HQQLinear(torch.nn.Module):
 		self.del_orig      = del_orig
 		self.offload_meta  = self.quant_config.pop('offload_meta') if (self.quant_config is not None) else None
 		
-		self.set_backend(HQQLinear.backend) #Default backend
+		self.set_backend(HQQLinear.backend) 
 
 		self.linear_layer = linear_layer
 
