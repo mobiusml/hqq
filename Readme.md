@@ -13,12 +13,6 @@ To get the latest version, you can install the core library directly via ```pip 
 
 Alternatively, clone the repo and run ```pip install .``` from this current folder. 
 
-### Important ⚠️
-If you are using a virtual machine on the cloud, make sure you limit the number of threads to only those available. Otherwise, processing will be unusually slow, especially for the GPTQ benchmark. You can do that by limiting the OMP threads:
-```
-num_threads=32; OMP_NUM_THREADS=$num_threads CUDA_VISIBLE_DEVICES=0 python 
-```
-
 ### Basic Usage
 To perform quantization with HQQ, you simply need to replace the linear layers ( ```torch.nn.Linear```) as follows:
 ```Python
@@ -37,9 +31,12 @@ The quantization parameters are set as follows:
 - ```group_size``` (int): no restrictions as long as ```weight.numel()``` is divisible by the ```group_size```.
 - ```quant_zero``` (bool): if True, it quantizes the zero-point to 8-bit without grouping.
 - ```quant_scale``` (bool): if True, it quantizes the scaling factor to 8-bit with a group_size of 128.
+- ```offload_meta``` (bool): if True, meta-data is offloaded to the CPU.
+- ```view_as_float``` (bool): if True, the quantized parameter is viewed as float instead of a int type.
 
-Additionally, you can set ```offload_meta=True``` to offload the meta-data to the CPU. This drastically decreases the GPU memory requirements but makes processing slightly slower for smaller group-sizes. With ```offload_meta=True```, you can run Llama2-70B and Mixtral with HQQ 2-bit using only 18.8GB and 13GB VRAM respectively!
+Setting ```offload_meta=True``` drastically decreases the GPU memory requirements but makes processing slightly slower for smaller group-sizes. With this setting, you can run Llama2-70B and Mixtral with HQQ 2-bit using only 18.8GB and 13GB VRAM respectively!
 
+### Backend
 You can try to change the backend which could speed-up the runtime:
 ```Python
 HQQLinear.set_backend(HQQBackend.PYTORCH)          #Pytorch backend
@@ -80,65 +77,62 @@ huggingface-cli login --token <your-token>
 You can quantize a Hugging Face model as follows:
 ```Python
 from hqq.engine.hf import HQQModelForCausalLM, AutoTokenizer
-model_id   = 'meta-llama/Llama-2-7b-chat-hf'
+
+#Model and setttings
+model_id      = 'meta-llama/Llama-2-7b-chat-hf'
+compute_dtype = torch.float16
+device        = 'cuda:0'
 
 #Load model on the CPU
 ######################
-model     = HQQModelForCausalLM.from_pretrained(model_id)
+model     = HQQModelForCausalLM.from_pretrained(model_id, torch_dtype=compute_dtype)
 tokenizer = AutoTokenizer.from_pretrained(model_id) 
 
 #Quantize the model
 ######################
 from hqq.core.quantize import *
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16, device='cuda') 
+model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, device=device) 
 
-#Optional: set backend
-######################
-HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 ```
 
 You can save/load a quantized model as follows:
 ```Python
 #Save the quantized model
 model.save_quantized(model, save_dir=save_dir)
+
 #Load from local directory or Hugging Face Hub on a specific device
 model = HQQModelForCausalLM.from_quantized(save_dir_or_hfhub, device='cuda')
-```
-
-Alternatively, you can also work with models created via ```transformers.AutoModelForCausalLM```:
-```Python
-from transformers import AutoModelForCausalLM
-model = AutoModelForCausalLM.from_pretrained(model_id) 
-#Quantize
-HQQModelForCausalLM.quantize_model_(model, quant_config=quant_config, device='cuda')
 ```
 
 For multimodal models, you can quantize the models separately. Here's an example that quantizes the Llama language model in Llava:
 ```Python
 #Load the model on CPU
 import transformers
-model_id  = "llava-hf/llava-1.5-13b-hf",
+model_id      = "llava-hf/llava-1.5-13b-hf"
+compute_dtype = torch.float16
+device        = 'cuda:0'
+
 processor = transformers.AutoProcessor.from_pretrained(model_id)
-model     = transformers.LlavaForConditionalGeneration.from_pretrained(model_id)
+model     = transformers.LlavaForConditionalGeneration.from_pretrained(model_id, torch_dtype=compute_dtype)
 
 #Quantize and offload to GPU
 from hqq.core.quantize import *
 from hqq.models.hf.llama import LlamaHQQ
-LlamaHQQ.quantize_model(model.language_model, quant_config=BaseQuantizeConfig(nbits=4, group_size=64))
+quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
+LlamaHQQ.quantize_model(model.language_model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
 #Use fp16 CLIP and tower
-model.vision_tower          = model.vision_tower.half().cuda()
-model.multi_modal_projector = model.multi_modal_projector.half().cuda()
+model.vision_tower          = model.vision_tower.to(device=device, dtype=compute_dtype)
+model.multi_modal_projector = model.multi_modal_projector.to(device=device, dtype=compute_dtype)
 model                       = model.eval();
 
 #Optimize/compile (Optional)
-HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 model.vision_tower          = torch.compile(model.vision_tower)
 model.multi_modal_projector = torch.compile(model.multi_modal_projector)
 ```
 
-### VLLM 🚀
+### VLLM (Experimental)
 By default, VLLM is not installed to avoid CUDA version problems. Make sure you install the right version that matches your CUDA settings (vllm <= 0.2.2): 
 https://docs.vllm.ai/en/latest/getting_started/installation.html 
 
@@ -157,10 +151,6 @@ model = HQQLLM(model=model_id)
 from hqq.core.quantize import *
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
 model.quantize_model(quant_config=quant_config)
-
-#Optional: set backend
-######################
-HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 ```
 
 Additionally, you can use the quantized model in Langchain (requires ```pip install langchain```) as follows:
@@ -175,11 +165,13 @@ You can save/load a quantized model as follows:
 ```Python
 #Save the quantized model
 model.save_quantized(model, save_dir=save_dir)
+
 #Load from local directory or Hugging Face Hub
 model = HQQLLM.from_quantized(save_dir_or_hfhub)
 ```
 
 Notes:
+- Support is broken since post 0.2.2 update.
 - The VLLM backend only works with a single GPU for now.
 - Only VLLM models created via ```save_quantized``` can be loaded with ```HQQLLM.from_quantized```.
 
@@ -200,15 +192,13 @@ from hqq.core.quantize import *
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
 model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16)
 
-#Optional: set backend
-######################
-HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 ```
 
 You can save/load the quantized models as follows:
 ```Python
 #Save the quantized model
 model.save_quantized(model, save_dir=save_dir)
+
 #Load from local directory or Hugging Face Hub
 model = HQQtimm.from_quantized(save_dir_or_hfhub)
 ```
@@ -220,14 +210,12 @@ If you want to quantize your own model architecture, you need to write a patchin
 You can specify different quantization configs for different layers by feeding a dictionary in the form ```linear_tag: BaseQuantizeConfig()```, The following example uses 4-bit for ```self_attn.v_proj``` and 2-bit for the rest of the layers:
 ```Python
 from hqq.core.quantize import *
-linear_tags  = HQQModelForCausalLM.get_linear_tags(model) #List of tags for the linear layers of the model
-q2_config    = BaseQuantizeConfig(nbits=2, group_size=16, quant_scale=True) #2-bit config
-q4_config    = BaseQuantizeConfig(nbits=4, group_size=64, quant_zero=True, quant_scale=False) #4-bit config
-quant_config = dict([(k, q2_config) for k in linear_tags])
-quant_config['self_attn.v_proj'] = q4_config
+q2_config    = BaseQuantizeConfig(nbits=2, group_size=16) #2-bit config
+q4_config    = BaseQuantizeConfig(nbits=4, group_size=64) #4-bit config
 
-#Quantize 
-model.quantize_model(quant_config=quant_config)
+linear_tags  = HQQModelForCausalLM.get_linear_tags(model) #List of tags for the linear layers of the model
+quant_config = {k: q2_config for k in linear_tags}
+quant_config['self_attn.v_proj'] = q4_config
 ```
 
 ### LoRA Training
@@ -246,6 +234,7 @@ lora_params      = {'self_attn.q_proj': base_lora_params,
                     'mlp.down_proj'   : None}
 
 
+#Add lora to linear/HQQ modules
 PeftUtils.add_lora(model, lora_params)
 
 #Optional: faster but might not work on older GPUs
