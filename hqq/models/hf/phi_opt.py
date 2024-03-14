@@ -1,3 +1,5 @@
+#Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
+#####################################################
 from ..base import *
 from .base  import *
 
@@ -46,15 +48,4 @@ class PhiPatch(BasePatch):
 
 
 class PhiHQQ(PhiPatch, BaseHQQHFModel):
-	#layers to ignore when saving the weights
-	@classmethod
-	def get_ignore_layers(cls, model):
-		return ['', 'transformer', 'transformer.h'] + ['transformer.h.' + str(i) for i in range(len(model.transformer.h))]
-
-	#Create empty model
-	@classmethod
-	def create_model(cls, save_dir):
-		config = transformers.AutoConfig.from_pretrained(cls.get_config_file(save_dir))
-		with init_empty_weights():
-			model = transformers.PhiForCausalLM(config)
-		return model
+	pass

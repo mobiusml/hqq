@@ -73,6 +73,9 @@ Below you can find the speed-up benchmark with various backends, ```HQQBackend.P
 #### Vision 
 - ViT-CLIP (timm) 🖼️
 
+#### Auto Mode
+- Hugging Face
+
 ### Hugging Face 🤗
 First, make sure you have your Hugging Face token properly set via:
 ```
@@ -135,6 +138,20 @@ model                       = model.eval();
 #Optimize/compile (Optional)
 model.vision_tower          = torch.compile(model.vision_tower)
 model.multi_modal_projector = torch.compile(model.multi_modal_projector)
+```
+
+If the model architecture is not manally defined in ```hqq/models/hf```, you can try the automatic mode that doesn't require knowing the architecture in advance:
+```Python
+from hqq.models.hf.base import AutoHQQHFModel
+
+#Quantize
+AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
+
+#Save
+AutoHQQHFModel.save_quantized(model, save_dir)
+
+#Load
+model = AutoHQQHFModel.from_quantized(save_dir)
 ```
 
 ### VLLM (Experimental)

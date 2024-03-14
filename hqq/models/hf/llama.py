@@ -1,3 +1,5 @@
+#Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
+#####################################################
 from ..base import *
 from .base  import *
 
@@ -43,15 +45,4 @@ class LLamaPatch(BasePatch):
 
 
 class LlamaHQQ(LLamaPatch, BaseHQQHFModel):
-	#layers to ignore when saving the weights
-	@classmethod
-	def get_ignore_layers(cls, model):
-		return ['', 'model', 'model.layers'] + ['model.layers.' + str(i) for i in range(len(model.model.layers))]
-
-	#Create empty model
-	@classmethod
-	def create_model(cls, save_dir):
-		config = transformers.AutoConfig.from_pretrained(cls.get_config_file(save_dir))
-		with init_empty_weights():
-			model = transformers.LlamaForCausalLM(config)
-		return model
+	pass
