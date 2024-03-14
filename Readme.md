@@ -18,11 +18,16 @@ To perform quantization with HQQ, you simply need to replace the linear layers (
 ```Python
 from hqq.core.quantize import *
 #Quantization settings
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_zero=True, quant_scale=False)
+quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
+
 #Replace your linear layer 
-hqq_layer = HQQLinear(your_linear_layer, quant_config, compute_dtype=torch.float16, device='cuda', del_orig=True)
-#del_orig=True will remove the original linear layer from memory
-#You can specify the CUDA device on which you want to quantize the model
+hqq_layer = HQQLinear(your_linear_layer, #torch.nn.Linear or None 
+                      quant_config=quant_config, #quantization configuration
+                      compute_dtype=torch.float16, #compute dtype
+                      device='cuda', #cuda device
+                      initialize=True, #Use False to quantize later
+                      del_orig=True #if Ture, delete the original layer
+                      )
 ```
 
 The quantization parameters are set as follows:
