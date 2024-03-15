@@ -4,8 +4,8 @@ import torch
 import numpy as np
 
 
-# re-estimate teh scale based on the inverse median
-def update_scale_inverse_median(W_f, scale, zero, axis, min_max):
+# re-estimate the scale based on the inverse median
+def update_scale_inverse_median(W_f, scale, zero, axis: int, min_max):
     scale_rng = 2e4
     z_val = 1e-4
     delta = 1e-2
@@ -44,8 +44,9 @@ def update_scale_inverse_median(W_f, scale, zero, axis, min_max):
 
 
 # Greedy local search
-def update_scale_grid_search(W_f, scale, zero, axis, min_max):
-    N = 128 + 1  # Make sure it's an odd number so that the original scale is included
+def update_scale_grid_search(W_f, scale, zero, axis, min_max, N: int = 128 + 1):
+    # Make sure it's an odd number so that the original scale is included
+    assert N % 2 == 1, 'Please check whether N: odd number'
     rng_dump = 0.05  # 0.05 / 1.
     z_val = 2e-4
 
@@ -258,15 +259,15 @@ def optimize_weights_autograd(
         W_r = (W_q - params["zero"]) / params["scale"]
         return W_r
 
-    with torch.no_grad():
-        _init_loss = _loss_fct(_fake_quant(W_f), W_f).item()
-
     def _step(W_f):
         optimizer.zero_grad()
         loss = _loss_fct(_fake_quant(W_f), W_f)
         loss.backward()
         optimizer.step()
         return np.round(loss.item(), 10)
+
+    with torch.no_grad():
+        _init_loss = _loss_fct(_fake_quant(W_f), W_f).item()
 
     for i in range(opt_params["iters"]):
         loss_out = _step(W_f)
@@ -286,4 +287,5 @@ def optimize_weights_autograd(
 
     del W_f
     torch.cuda.empty_cache()
+
     return params["scale"], params["zero"]
