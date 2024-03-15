@@ -2,9 +2,11 @@
 #####################################################
 import torch
 from torch import nn
+from torch import dtype, float16
 import gc
 import os
 from os.path import join as pjoin
+from typing import Callable
 from tqdm import tqdm
 from abc import abstractmethod
 
@@ -17,20 +19,12 @@ _IGNORE_LINEAR = ["lm_head"]
 
 
 # Cleanup GPU vram
-def cleanup():
+def cleanup() -> None:
     torch.cuda.empty_cache()
     gc.collect()
 
-
-# Make sure file paths end with '/'
-def fix_path(path):
-    if len(path) == 0:
-        return path
-    return path + "/" if (path[-1] != "/") else path
-
-
 # Finds the parent of a node module named "name"
-def find_parent(model, name):
+def find_parent(model, name: str) -> nn.Module:
     module_tree = name.split(".")[:-1]
     parent = model
     for m in module_tree:
@@ -41,7 +35,6 @@ def find_parent(model, name):
 # checks if a module is a leaf: doesn't have another module inside
 def is_leaf_module(module) -> bool:
     return len(module._modules) == 0
-
 
 # Get the linear_tag from a modul name. For example: model.layers.31.self_attn.k_proj -> self_attn.k_proj
 def name_to_linear_tag(name: str) -> str:
@@ -55,7 +48,7 @@ def name_to_linear_tag(name: str) -> str:
 
 
 # Get all linear tags available
-def get_linear_tags_from_model(model, ignore):
+def get_linear_tags_from_model(model, ignore: list) -> list:
     linear_tags = set()
     for name, module in model.named_modules():
         if (type(module) in _LINEAR_LAYERS) and (name.split(".")[-1] not in ignore):
@@ -69,7 +62,7 @@ class BasePatch:
     ############################################
     # This method iterates through layers of the model that are NOT nn.Linear and processes them via new_nodule = patch_fct(module, params)
     @classmethod
-    def patch_nonlinearlayers(cls, model, patch_fct, verbose=True):
+    def patch_nonlinearlayers(cls, model, patch_fct: Callable, verbose: bool = True) -> None:
         ignore_tags = cls.get_ignore_layers(model)
 
         tmp_mapping = {}
@@ -86,7 +79,7 @@ class BasePatch:
 
     # This method iterates through layers of the model that are nn.Linear and processes them via new_nodule = patch_fct(module, params)
     @classmethod
-    def patch_linearlayers(cls, model, patch_fct, patch_params, verbose=True):
+    def patch_linearlayers(cls, model, patch_fct: Callable, patch_params: dict | None, verbose: bool = True) -> None:
         ignore_tags = cls.get_ignore_layers(model)
 
         tmp_mapping = {}
@@ -108,18 +101,18 @@ class BasePatch:
     ############################################
     # These tags are used to specfiy parameters of the patching in patch_linearlayers()
     @classmethod
-    def set_auto_linear_tags(cls, model, ignore=_IGNORE_LINEAR):
+    def set_auto_linear_tags(cls, model, ignore: list = _IGNORE_LINEAR) -> None:
         if len(cls.get_linear_tags()) == 0:
             cls.linear_tags = get_linear_tags_from_model(model, ignore=ignore)
             cls.get_linear_tags = lambda: cls.linear_tags
 
     # Returns the current linear tags
     @classmethod
-    def get_linear_tags(cls):
+    def get_linear_tags(cls) -> list:
         return []
 
     @classmethod
-    def get_ignore_layers(cls, model):
+    def get_ignore_layers(cls, model) -> list:
         layers = {""}
         for name, module in model.named_modules():
             if not is_leaf_module(module):
@@ -128,13 +121,13 @@ class BasePatch:
 
     # Autmatically name modules. This is very important to save/load the weights
     @classmethod
-    def autoname_modules(cls, model):
+    def autoname_modules(cls, model) -> None:
         for name, module in model.named_modules():
             module.name = name
 
     # Freeze all layers
     @classmethod
-    def freeze_model(cls, model):
+    def freeze_model(cls, model) -> None:
         for param in model.parameters():
             param.requires_grad = False
         try:
@@ -146,8 +139,8 @@ class BasePatch:
     # Main patching function
     @classmethod
     def patch_model(
-        cls, model, patch_nonlinear_fct, patch_linear_fct, patch_params, verbose=True
-    ):
+        cls, model, patch_nonlinear_fct: Callable, patch_linear_fct: Callable, patch_params: dict, verbose: bool = True
+    ) -> None:
         model.eval()
         cls.freeze_model(model)
         cls.autoname_modules(model)
@@ -166,33 +159,33 @@ class BaseHQQModel:
 
     # This method saves the model architecture only without inculding the weights (for example to a config.json)
     @abstractmethod
-    def cache_model(cls, model, save_dir):
+    def cache_model(cls, model, save_dir: str):
         pass
 
     ############################################
 
     @classmethod
-    def get_config_file(cls, save_dir):
+    def get_config_file(cls, save_dir: str) -> str:
         return pjoin(save_dir, "config.json")
 
     @classmethod
-    def get_weight_file(cls, save_dir):
+    def get_weight_file(cls, save_dir: str) -> str:
         return pjoin(save_dir, "qmodel.pt")
 
     # Save weights to disk
     @classmethod
-    def save_weights(cls, weights, save_dir):
+    def save_weights(cls, weights: dict, save_dir: str) -> None:
         torch.save(weights, cls.get_weight_file(save_dir))
 
     # Load weights from disk
     @classmethod
-    def load_weights(cls, save_dir, map_location=None):
+    def load_weights(cls, save_dir: str, map_location: bool = None):
         return torch.load(cls.get_weight_file(save_dir), map_location=map_location)
 
     # Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
     @classmethod
     def quantize_model(
-        cls, model, quant_config, compute_dtype=torch.float16, device="cuda"
+        cls, model, quant_config: dict, compute_dtype: dtype = float16, device="cuda"
     ):
         # Set linear tags automatically
         cls.set_auto_linear_tags(model)
@@ -237,7 +230,7 @@ class BaseHQQModel:
 
     # Prepares model weights by iterating through modules. It might some parameters that are NOT modules like model.param1
     @classmethod
-    def serialize_weights(cls, model, verbose=False):
+    def serialize_weights(cls, model, verbose: bool = False) -> dict:
         weights = {}
         ignore_keys = cls.get_ignore_layers(model)
         for name, module in model.named_modules():
@@ -255,7 +248,7 @@ class BaseHQQModel:
 
     # Main function to save a quantized model
     @classmethod
-    def save_quantized(cls, model, save_dir, verbose=False):
+    def save_quantized(cls, model, save_dir: str, verbose: bool = False):
         # Save config
         cls.cache_model(model, save_dir)
 
@@ -266,7 +259,7 @@ class BaseHQQModel:
         cls.save_weights(weights, save_dir)
 
     @classmethod
-    def try_snapshot_download(cls, save_dir_or_hub, cache_dir=""):
+    def try_snapshot_download(cls, save_dir_or_hub: str, cache_dir: str = ""):
         save_dir = pjoin(cache_dir, save_dir_or_hub)
 
         if not os.path.exists(save_dir):
@@ -283,13 +276,13 @@ class BaseHQQModel:
 
     # This method is specfically designed in case we need to load some weights that are not part of any module
     @classmethod
-    def post_module_load(cls, model, weights):
+    def post_module_load(cls, model, weights: dict):
         pass
 
     # Main function to load an HQQ quantized model from either HF hub or locally
     @classmethod
     def from_quantized(
-        cls, save_dir_or_hub, compute_dtype=torch.float16, device="cuda", cache_dir=""
+        cls, save_dir_or_hub, compute_dtype: dtype = float16, device="cuda", cache_dir: str = ""
     ):
         # Get directory path
         save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)

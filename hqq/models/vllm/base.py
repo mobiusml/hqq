@@ -1,6 +1,6 @@
 # Base HQQ/VLLM model defintion
 import torch
-
+from torch import dtype, float16
 from vllm.model_executor.layers.linear import UnquantizedLinearMethod
 from ..base import BaseHQQModel, HQQLinear
 
@@ -12,7 +12,7 @@ class HQQLinearMethod(UnquantizedLinearMethod):
 
 class BaseHQQVLLMModel(BaseHQQModel):
     @classmethod
-    def quantize_model_single_worker(cls, model, quant_config, compute_dtype, device):
+    def quantize_model_single_worker(cls, model, quant_config: dict, compute_dtype: dtype = float16 , device = 'cuda'):
         # Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
         patch_params = dict([(k, quant_config) for k in cls.get_linear_tags()])
 
@@ -50,7 +50,7 @@ class BaseHQQVLLMModel(BaseHQQModel):
 
     @classmethod
     def quantize_model(
-        cls, model, quant_config, compute_dtype=torch.float16, device="cuda"
+        cls, model, quant_config, compute_dtype: dtype = float16, device="cuda"
     ):
         workers = model.llm_engine.workers
         for i in range(len(workers)):
@@ -97,7 +97,7 @@ class BaseHQQVLLMModel(BaseHQQModel):
         return weights
 
     @classmethod
-    def save_quantized(cls, model, save_dir, verbose=False):
+    def save_quantized(cls, model, save_dir: str, verbose: bool = False):
         model_0 = model.llm_engine.workers[0].model
 
         # Cache model
@@ -112,7 +112,7 @@ class BaseHQQVLLMModel(BaseHQQModel):
     #################################################
     @classmethod
     def from_quantized_single_worker(
-        cls, save_dir_or_hub, cache_dir="", compute_dtype=torch.float16, device="cuda:0"
+        cls, save_dir_or_hub: str, cache_dir: str = "", compute_dtype: dtype = float16, device="cuda:0"
     ):
         # Get directory path
         save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)
