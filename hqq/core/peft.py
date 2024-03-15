@@ -412,7 +412,7 @@ class PeftUtils:
 
     @classmethod
     def add_lora(
-        cls, model, lora_params, base_class: bool = None, verbose: bool = True
+        cls, model, peft_config, base_class: bool = None, verbose: bool = True
     ) -> None:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
@@ -423,11 +423,14 @@ class PeftUtils:
 
         # Patch
         base_class.patch_linearlayers(
-            model, patch_linear_add_peft, lora_params, verbose=verbose
+            model, patch_linear_add_peft, peft_config, verbose=verbose
         )
 
         # Rename modules
         autoname_modules(model)
+
+        # add config to model
+        model.peft_config = peft_config
 
     @classmethod
     def merge_lora(
@@ -486,7 +489,10 @@ class PeftUtils:
         )
 
         # save
-        torch.save(lora_global_params, filename)
+        torch.save(
+            {"peft_config": model.peft_config, "parameters": lora_global_params},
+            filename,
+        )
 
     @classmethod
     def load_lora_weights(
@@ -495,7 +501,22 @@ class PeftUtils:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
 
-        lora_global_params = torch.load(filename, map_location="cpu")
+        lora_data = torch.load(filename, map_location="cpu")
+
+        # V0.2 format: automatically creates lora modules if the model doesn't contain it
+        if ("peft_config" in lora_data) and ("parameters" in lora_data):
+            peft_config = lora_data["peft_config"]
+            lora_global_params = lora_data["parameters"]
+            if not hasattr(model, "peft_config"):
+                cls.add_lora(model=model, peft_config=peft_config)
+
+        # v0.1 format
+        else:
+            if not hasattr(model, "peft_config"):
+                raise Exception(
+                    "Using older version of lora weights. LoRa modules should be manually added in this case."
+                )
+            lora_global_params = lora_data
 
         def _patch_linear_load_weights(layer, patch_params, return_layer=True):
             if is_hqq_lora_layer(layer):
