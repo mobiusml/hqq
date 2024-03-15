@@ -1,6 +1,7 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import torch
+from torch import uint8, float16, nn, Tensor
 import copy
 from enum import Enum
 
@@ -39,27 +40,27 @@ class Quantizer:
     }
 
     unpack_view_dtype = {
-        "8bit_u8": torch.uint8,
-        "4bit_u8": torch.uint8,
+        "8bit_u8": uint8,
+        "4bit_u8": uint8,
         "3bit_32": torch.int32,
-        "2bit_u8": torch.uint8,
-        "1bit_u8": torch.uint8,
+        "2bit_u8": uint8,
+        "1bit_u8": uint8,
     }
 
     @classmethod
     def quantize(
         cls,
-        tensor,
-        nbits=4,
-        channel_wise=True,
-        group_size=64,
-        optimize=False,
-        round_zero=False,
-        axis=0,
-        bitpack=True,
-        compute_dtype=None,
-        view_as_float=False,
-        device="cuda",
+        tensor: Tensor,
+        nbits: int = 4,
+        channel_wise: bool = True,
+        group_size: int = 64,
+        optimize: bool = False,
+        round_zero: bool = False,
+        axis: int = 0,
+        bitpack: bool = True,
+        compute_dtype: torch.dtype | None = None,
+        view_as_float: bool = False,
+        device: str = "cuda",
     ):
         assert nbits in Quantizer.SUPPORTED_BITS, (
             "nbits=" + str(nbits) + " not supported."
@@ -85,14 +86,14 @@ class Quantizer:
             )
 
         # Get min/max values
-        if channel_wise is False:
+        if not channel_wise:
             _min, _max = W.min(), W.max()
             optimize = False
         else:
             _min = W.min(axis=axis, keepdim=True)[0]
             _max = W.max(axis=axis, keepdim=True)[0]
 
-        max_v = 2**nbits - 1
+        max_v = 2 ** nbits - 1
         min_v = 0
         min_max = [min_v, max_v]
 
@@ -156,9 +157,9 @@ class Quantizer:
 
     # Main dequantization: bit_unpacking > (W_q - z)*s > reshape
     @classmethod
-    def dequantize(cls, W_q, meta):
+    def dequantize(cls, W_q: Tensor, meta) -> Tensor:
         compute_dtype = (
-            meta["compute_dtype"] if ("compute_dtype" in meta) else torch.float16
+            meta["compute_dtype"] if ("compute_dtype" in meta) else float16
         )
         if meta["packing"]:
             if meta["view_as_float"]:
@@ -176,9 +177,9 @@ class Quantizer:
         return W_r
 
     @classmethod
-    def to_inplace(cls, W_q, meta, device):
+    def to_inplace(cls, W_q: Tensor, meta, device):
         compute_dtype = (
-            meta["compute_dtype"] if ("compute_dtype" in meta) else torch.float16
+            meta["compute_dtype"] if ("compute_dtype" in meta) else float16
         )
         if W_q is not None:
             W_q = W_q.to(device).contiguous()
@@ -196,9 +197,9 @@ class Quantizer:
         return W_q, meta
 
     @classmethod
-    def to_ooplace(cls, W_q, meta, device):
+    def to_ooplace(cls, W_q: Tensor, meta, device):
         compute_dtype = (
-            meta["compute_dtype"] if ("compute_dtype" in meta) else torch.float16
+            meta["compute_dtype"] if ("compute_dtype" in meta) else float16
         )
         if W_q is not None:
             W_q_c = W_q.to(device).contiguous()
@@ -221,11 +222,11 @@ class Quantizer:
         return W_q_c, meta_c
 
     @classmethod
-    def cuda(cls, W_q, meta, device):
+    def cuda(cls, W_q: Tensor, meta, device):
         return Quantizer.to_inplace(W_q, meta, device=device)
 
     @classmethod
-    def cpu(cls, W_q, meta):
+    def cpu(cls, W_q: Tensor, meta):
         return Quantizer.to_ooplace(W_q, meta, device="cpu")
 
 
@@ -349,7 +350,7 @@ class HQQMatmulCachedDeq(torch.autograd.Function):
 
 
 # Main linear layer
-class HQQLinear(torch.nn.Module):
+class HQQLinear(nn.Module):
     # Default backend
     if hqq_aten_is_available:
         backend = HQQBackend.ATEN
@@ -360,10 +361,10 @@ class HQQLinear(torch.nn.Module):
         self,
         linear_layer,
         quant_config,
-        del_orig=True,
-        compute_dtype=torch.float16,
-        device="cuda",
-        initialize=True,
+        del_orig: bool = True,
+        compute_dtype: torch.dtype = float16,
+        device: str = "cuda",
+        initialize: bool = True,
     ):
         super().__init__()
         self.ready = False
@@ -409,7 +410,7 @@ class HQQLinear(torch.nn.Module):
     def cuda(self, device):
         self.meta["compute_dtype"] = self.compute_dtype
 
-        if type(self.W_q) == torch.nn.parameter.Parameter:
+        if type(self.W_q) == nn.parameter.Parameter:
             self.W_q.data, self.meta = Quantizer.cuda(self.W_q.data, self.meta, device)
         else:
             self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta, device)
@@ -456,7 +457,7 @@ class HQQLinear(torch.nn.Module):
         if self.bias is not None:
             self.bias = self.bias.to(self.compute_dtype).cuda(device)
 
-        self.W_q = torch.nn.Parameter(self.W_q, requires_grad=False)
+        self.W_q = nn.Parameter(self.W_q, requires_grad=False)
         self.device = device
         self.in_gpu = True
 
@@ -580,7 +581,7 @@ class HQQLinear(torch.nn.Module):
         if "zero_scale" in meta:
             zero_scale = meta["zero_scale"].to(self.W_q.device)
 
-            if zero_scale.dtype == torch.uint8:
+            if zero_scale.dtype == uint8:
                 meta["zero_q"] = zero_scale[0]
                 del_keys.append("zero_q")
                 meta["scale_q"] = zero_scale[1]
@@ -635,7 +636,7 @@ class HQQLinear(torch.nn.Module):
     #############################################
     # Requires building the aten backend
     @torch.jit.ignore
-    def dequantize_Wq_aten(self, W_q, meta):
+    def dequantize_Wq_aten(self, W_q: Tensor, meta):
         if meta["view_as_float"]:
             W_q = W_q.view(meta["unpack_view_dtype"])
         return hqq_aten.dequantize(
@@ -659,7 +660,7 @@ class HQQLinear(torch.nn.Module):
         if "zero_scale" in meta:
             zero_scale = meta["zero_scale"].to(self.W_q.device)
 
-            if zero_scale.dtype == torch.uint8:
+            if zero_scale.dtype == uint8:
                 meta["zero_q"] = zero_scale[0]
                 del_keys.append("zero_q")
                 meta["scale_q"] = zero_scale[1]
@@ -700,14 +701,14 @@ class HQQLinear(torch.nn.Module):
 
         return W_est
 
-    def forward_aten(self, x):
+    def forward_aten(self, x: Tensor) -> Tensor:
         W_est = self.dequantize_aten()
         out = torch.matmul(x, W_est.t())
         if self.bias is not None:
             out += self.bias
         return out
 
-    def forward_aten_backprop(self, x):
+    def forward_aten_backprop(self, x: Tensor) -> Tensor:
         return HQQMatmulNoCacheDeq.apply(x, self.dequantize_aten, self.bias)
 
     # def forward_aten(self, x):
@@ -750,12 +751,12 @@ class HQQLinear(torch.nn.Module):
 
 
 def hqq_base_quant_config(
-    nbits=4,
-    group_size=64,
-    quant_zero=True,
-    quant_scale=False,
-    offload_meta=False,
-    view_as_float=False,
+    nbits: int = 4,
+    group_size: int = 64,
+    quant_zero: bool = True,
+    quant_scale: bool = False,
+    offload_meta: bool = False,
+    view_as_float: bool = False,
 ):
     assert (
         nbits in Quantizer.SUPPORTED_BITS
