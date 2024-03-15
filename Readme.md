@@ -48,10 +48,7 @@ HQQLinear.set_backend(HQQBackend.PYTORCH)          #Pytorch backend
 HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)  #Compiled Pytorch via dynamo
 HQQLinear.set_backend(HQQBackend.ATEN)             #C++ Aten/CUDA backend (set automatically by default if available)
 ```
-We recommend you use the ```HQQBackend.ATEN``` backend for faster processing. You can install as follows:
-```
-cd hqq/kernels && python setup_cuda.py install;
-```
+The ```HQQBackend.ATEN``` backend is automatically installed and used by default when available.
 
 Below you can find the speed-up benchmark with various backends, ```HQQBackend.PYTORCH``` being the baseline:
 
