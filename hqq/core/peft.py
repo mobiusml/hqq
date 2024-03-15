@@ -5,10 +5,11 @@ from torch import float16, float32
 from torch import Tensor
 from torch import nn
 import numpy as np
-from .quantize import HQQLinear, HQQBackend, Quantizer
+from .quantize import HQQLinear, Quantizer
 from .utils import cleanup
 
 
+# Return trainable weight matrix
 def _get_dense_param(
     in_features: int,
     out_features: int,
@@ -26,6 +27,7 @@ def _get_dense_param(
     return nn.Parameter(W, requires_grad=trainable)
 
 
+# Applies LoRA to a linear module (include HQQLinear)
 class HQQLinearLoRA(nn.Module):
     def __init__(self, linear_layer: nn.Module, peft_config: dict):
         super().__init__()
@@ -84,6 +86,7 @@ class HQQLinearLoRA(nn.Module):
         self.lora_alpha = peft_config["lora_alpha"]
         self.r = peft_config["r"]
         self.scaling = self.lora_alpha / self.r
+
         self.lora_A = _get_dense_param(
             self.in_features,
             self.r,
@@ -91,6 +94,7 @@ class HQQLinearLoRA(nn.Module):
             trainable=True,
             dtype=self.train_dtype,
         )
+
         self.lora_B = _get_dense_param(
             self.r,
             self.out_features,
@@ -408,9 +412,6 @@ class PeftUtils:
 
         # Rename modules
         autoname_modules(model)
-
-        # Default backprop backend
-        HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP)
 
     @classmethod
     def merge_lora(
