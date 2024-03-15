@@ -1,7 +1,7 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import torch
-from torch import float16, float32
+from torch import float16, bfloat16, float32
 from torch import Tensor
 from torch import nn
 import numpy as np
@@ -52,24 +52,22 @@ class HQQLinearLoRA(nn.Module):
         # Bias
         self.bias = None if (linear_layer.bias is None) else linear_layer.bias.clone()
         self.linear_layer.bias = None
-        peft_config["train_bias"] = (
+        self.train_bias = (
             peft_config["train_bias"] if ("train_bias" in peft_config) else False
         )
+
         if self.bias is not None:
-            self.bias = nn.Parameter(self.bias, requires_grad=peft_config["train_bias"])
-        if (self.bias is None) and peft_config["train_bias"]:
+            self.bias = nn.Parameter(self.bias, requires_grad=self.train_bias)
+            if(self.train_bias):
+                self.bias.data = self.bias.data.to(self.train_dtype)
+
+        if (self.bias is None) and self.train_bias:
             self.bias = nn.Parameter(
                 torch.zeros(
                     (self.out_features,), device=self.device, dtype=self.train_dtype
                 ),
                 requires_grad=True,
             )
-
-        # Compute type: x.dtype force cast
-        if "compute_dtype" in peft_config:
-            self.compute_dtype = peft_config["compute_dtype"]
-        else:
-            self.compute_dtype = float16
 
         # Dropout
         if "dropout" in peft_config:
@@ -117,46 +115,46 @@ class HQQLinearLoRA(nn.Module):
                 + ")"
             )
             self.lora_A.data = (
-                peft_config["lora_init"]["lora_A"].to(self.train_dtype).to(self.device)
+                peft_config["lora_init"]["lora_A"].to(device=self.device, dtype=self.train_dtype, non_blocking=True)
             )
             self.lora_B.data = (
-                peft_config["lora_init"]["lora_B"].to(self.train_dtype).to(self.device)
+                peft_config["lora_init"]["lora_B"].to(device=self.device, dtype=self.train_dtype, non_blocking=True)
             )
         else:
             # Init weights, as as the original LoRA implementation
             nn.init.kaiming_uniform_(self.lora_A, a=np.sqrt(5))
             nn.init.zeros_(self.lora_B)
 
-    def forward(self, x: Tensor) -> Tensor:
-        # Forward with base linear
-        x = x.to(self.compute_dtype)
+    def forward_lora(self, x: Tensor) -> Tensor: #output is self.train_dtype
+        return torch.matmul(torch.matmul(self.peft_drop(x.to(self.train_dtype)), self.lora_A), self.lora_B) * self.scaling
 
+    def forward(self, x: Tensor) -> Tensor:
         x_dtype = x.dtype
 
+        #Forward with the base linear layer
         out = self.linear_layer(x)
 
         # LoRA
-        out += (
-            torch.matmul(
-                torch.matmul(self.peft_drop(x.to(self.lora_A.dtype)), self.lora_A),
-                self.lora_B,
-            )
-            * self.scaling
-        ).to(x_dtype)
+        if(self.train_bias):
+            out += (self.forward_lora(x) + self.bias).to(x_dtype)
 
-        # Bias
-        if self.bias is not None:
-            out += self.bias
-
-        out = out.to(x_dtype)
+        else:
+            out += self.forward_lora(x).to(x_dtype) 
+            if self.bias is not None:
+                out += self.bias 
 
         return out
 
     def merge_and_quantize(self, quant_config: dict) -> nn.Module:
-        # Get initial weights
-        W = self.linear_layer(
-            torch.eye(self.in_features, device=self.device, dtype=float16)
-        ).t()  # == self.linear_layer.dequantize()
+        #not easy to figure out the type for "any" potential linear layer (nn.Linear, HQQLinear, etc.)
+        for _dtype in [float16, bfloat16, float32]: 
+            try:
+                # Get initial weights
+                W = self.linear_layer(
+                    torch.eye(self.in_features, device=self.device, dtype=_dtype)
+                ).t()  # == self.linear_layer.dequantize()
+            except Exception:
+                pass
 
         # Merge weights
         W += (
@@ -177,6 +175,10 @@ class HQQLinearLoRA(nn.Module):
         self.lora_B.data = self.lora_B.data.to(dtype)
         if self.bias is not None:
             self.bias.data = self.bias.data.to(dtype)
+        if(isinstance(self.scaling, nn.Parameter)):
+            self.scaling.data = self.scaling.data.to(dtype)
+        if(isinstance(self.scaling, Tensor)):
+            self.scaling = self.scaling.to(dtype)
         return self
 
     def state_dict(self):
@@ -190,9 +192,18 @@ class HQQLinearLoRA(nn.Module):
     def load_state_dict(self, state_dict):
         self.lora_A.data = state_dict["lora_A"].data.to(self.device)
         self.lora_B.data = state_dict["lora_B"].data.to(self.device)
-        self.scaling = state_dict["scaling"]
+        
         if state_dict["bias"] is not None:
             self.bias.data = state_dict["bias"].data.to(self.device)
+
+        #Handle different use-cases of scaling
+        if(isinstance(state_dict["scaling"], (int, float))):
+            self.scaling = state_dict["scaling"]
+        if(isinstance(state_dict["scaling"], nn.Parameter)):
+            self.scaling.data = state_dict["scaling"].data.to(self.device)
+        if(isinstance(state_dict["scaling"], Tensor)):
+            self.scaling = state_dict["scaling"].to(self.device)
+
 
 
 # LoRA with fake quantization
