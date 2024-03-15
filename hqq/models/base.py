@@ -1,8 +1,10 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import torch
+from torch import nn
 import gc
 import os
+from os.path import join as pjoin
 from tqdm import tqdm
 from abc import abstractmethod
 
@@ -10,7 +12,7 @@ from huggingface_hub import snapshot_download
 from ..core.quantize import HQQLinear
 
 # Defined what is qualified as "linear layer"
-_LINEAR_LAYERS = [torch.nn.Linear]
+_LINEAR_LAYERS = [nn.Linear]
 _IGNORE_LINEAR = ["lm_head"]
 
 
@@ -37,12 +39,12 @@ def find_parent(model, name):
 
 
 # checks if a module is a leaf: doesn't have another module inside
-def is_leaf_module(module):
+def is_leaf_module(module) -> bool:
     return len(module._modules) == 0
 
 
 # Get the linear_tag from a modul name. For example: model.layers.31.self_attn.k_proj -> self_attn.k_proj
-def name_to_linear_tag(name):
+def name_to_linear_tag(name: str) -> str:
     return ".".join(
         [
             n
@@ -171,11 +173,11 @@ class BaseHQQModel:
 
     @classmethod
     def get_config_file(cls, save_dir):
-        return fix_path(save_dir) + "config.json"
+        return pjoin(save_dir, "config.json")
 
     @classmethod
     def get_weight_file(cls, save_dir):
-        return fix_path(save_dir) + "qmodel.pt"
+        return pjoin(save_dir, "qmodel.pt")
 
     # Save weights to disk
     @classmethod
@@ -265,16 +267,16 @@ class BaseHQQModel:
 
     @classmethod
     def try_snapshot_download(cls, save_dir_or_hub, cache_dir=""):
-        save_dir = fix_path(cache_dir) + save_dir_or_hub
+        save_dir = pjoin(cache_dir, save_dir_or_hub)
 
-        if os.path.exists(save_dir) is False:
+        if not os.path.exists(save_dir):
             save_dir = snapshot_download(repo_id=save_dir_or_hub, cache_dir=cache_dir)
-            save_dir = fix_path(save_dir)
+            save_dir = pjoin(save_dir)
 
         # Check
-        if os.path.exists(cls.get_weight_file(save_dir)) is False:
+        if not os.path.exists(cls.get_weight_file(save_dir)):
             raise Exception("Weight file missing. Check your cache directory.")
-        if os.path.exists(cls.get_config_file(save_dir)) is False:
+        if not os.path.exists(cls.get_config_file(save_dir)):
             raise Exception("Config file missing. Check your cache directory.")
 
         return save_dir
@@ -306,7 +308,7 @@ class BaseHQQModel:
             weights = cls.load_weights(save_dir)
         except Exception:
             print("Failed to load the weights")
-            return
+            raise FileNotFoundError
 
         # load_state_dict() doesn't work with modules initialized with init_empty_weights(), so we need to do this manually
         @torch.no_grad()
@@ -328,7 +330,7 @@ class BaseHQQModel:
                     setattr(
                         module,
                         key,
-                        torch.nn.Parameter(
+                        nn.Parameter(
                             state_dict[key].to(
                                 device=device, dtype=compute_dtype, non_blocking=True
                             ),
