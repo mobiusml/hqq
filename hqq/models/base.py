@@ -2,7 +2,7 @@
 #####################################################
 import torch
 from torch import nn
-from torch import dtype, float16
+from torch import float16
 import gc
 import os
 from os.path import join as pjoin
@@ -23,6 +23,7 @@ def cleanup() -> None:
     torch.cuda.empty_cache()
     gc.collect()
 
+
 # Finds the parent of a node module named "name"
 def find_parent(model, name: str) -> nn.Module:
     module_tree = name.split(".")[:-1]
@@ -35,6 +36,7 @@ def find_parent(model, name: str) -> nn.Module:
 # checks if a module is a leaf: doesn't have another module inside
 def is_leaf_module(module) -> bool:
     return len(module._modules) == 0
+
 
 # Get the linear_tag from a modul name. For example: model.layers.31.self_attn.k_proj -> self_attn.k_proj
 def name_to_linear_tag(name: str) -> str:
@@ -62,7 +64,9 @@ class BasePatch:
     ############################################
     # This method iterates through layers of the model that are NOT nn.Linear and processes them via new_nodule = patch_fct(module, params)
     @classmethod
-    def patch_nonlinearlayers(cls, model, patch_fct: Callable, verbose: bool = True) -> None:
+    def patch_nonlinearlayers(
+        cls, model, patch_fct: Callable, verbose: bool = True
+    ) -> None:
         ignore_tags = cls.get_ignore_layers(model)
 
         tmp_mapping = {}
@@ -79,7 +83,9 @@ class BasePatch:
 
     # This method iterates through layers of the model that are nn.Linear and processes them via new_nodule = patch_fct(module, params)
     @classmethod
-    def patch_linearlayers(cls, model, patch_fct: Callable, patch_params: dict | None, verbose: bool = True) -> None:
+    def patch_linearlayers(
+        cls, model, patch_fct: Callable, patch_params: dict | None, verbose: bool = True
+    ) -> None:
         ignore_tags = cls.get_ignore_layers(model)
 
         tmp_mapping = {}
@@ -139,7 +145,12 @@ class BasePatch:
     # Main patching function
     @classmethod
     def patch_model(
-        cls, model, patch_nonlinear_fct: Callable, patch_linear_fct: Callable, patch_params: dict, verbose: bool = True
+        cls,
+        model,
+        patch_nonlinear_fct: Callable,
+        patch_linear_fct: Callable,
+        patch_params: dict,
+        verbose: bool = True,
     ) -> None:
         model.eval()
         cls.freeze_model(model)
@@ -185,7 +196,11 @@ class BaseHQQModel:
     # Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
     @classmethod
     def quantize_model(
-        cls, model, quant_config: dict, compute_dtype: dtype = float16, device="cuda"
+        cls,
+        model,
+        quant_config: dict,
+        compute_dtype: torch.dtype = float16,
+        device="cuda",
     ):
         # Set linear tags automatically
         cls.set_auto_linear_tags(model)
@@ -282,7 +297,11 @@ class BaseHQQModel:
     # Main function to load an HQQ quantized model from either HF hub or locally
     @classmethod
     def from_quantized(
-        cls, save_dir_or_hub, compute_dtype: dtype = float16, device="cuda", cache_dir: str = ""
+        cls,
+        save_dir_or_hub,
+        compute_dtype: torch.dtype = float16,
+        device="cuda",
+        cache_dir: str = "",
     ):
         # Get directory path
         save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)

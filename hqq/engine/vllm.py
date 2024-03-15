@@ -3,7 +3,7 @@
 
 # Import VLLM architectures here with the dummy_load trick
 import torch
-from torch import dtype, float16
+from torch import float16
 import transformers
 from ..models.vllm.llama import LlamaForCausalLM, LlamaHQQ
 from ..models.base import BaseHQQModel
@@ -73,7 +73,7 @@ class HQQLLM(_Parent, HQQWrapper):
         return self
 
     def quantize_model(
-        self, quant_config: dict, compute_dtype: dtype = float16, device="cuda"
+        self, quant_config: dict, compute_dtype: torch.dtype = float16, device="cuda"
     ):
         return self.quantize_model_(
             model=self,
@@ -95,7 +95,7 @@ class HQQLLM(_Parent, HQQWrapper):
     def from_quantized(
         cls,
         save_dir_or_hub: str,
-        compute_dtype: dtype = float16,
+        compute_dtype: torch.dtype = float16,
         cache_dir: str = "",
         tensor_parallel_size: int = 1,
     ):

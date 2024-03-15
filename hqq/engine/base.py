@@ -2,7 +2,8 @@
 #####################################################
 from abc import abstractmethod
 from ..models.base import BaseHQQModel
-from torch import float16, dtype
+import torch
+from torch import float16
 
 # Wrapper that makes it easier to add quantization support to different engines (HF, VLLM, etc.)
 
@@ -52,7 +53,7 @@ class HQQWrapper:
     #####################################################
     @classmethod
     def quantize_model_(
-        cls, model, quant_config, compute_dtype: dtype = float16, device="cuda"
+        cls, model, quant_config, compute_dtype: torch.dtype = float16, device="cuda"
     ):
         if cls._is_quantizable(model) is False:
             cls._make_quantizable(model, quantized=False)
@@ -72,7 +73,7 @@ class HQQWrapper:
     def from_quantized(
         cls,
         save_dir_or_hub,
-        compute_dtype: dtype = float16,
+        compute_dtype: torch.dtype = float16,
         device="cuda",
         cache_dir: str = "",
     ):

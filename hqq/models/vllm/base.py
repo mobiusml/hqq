@@ -1,6 +1,6 @@
 # Base HQQ/VLLM model defintion
 import torch
-from torch import dtype, float16
+from torch import float16
 from vllm.model_executor.layers.linear import UnquantizedLinearMethod
 from ..base import BaseHQQModel, HQQLinear
 
@@ -12,7 +12,13 @@ class HQQLinearMethod(UnquantizedLinearMethod):
 
 class BaseHQQVLLMModel(BaseHQQModel):
     @classmethod
-    def quantize_model_single_worker(cls, model, quant_config: dict, compute_dtype: dtype = float16 , device = 'cuda'):
+    def quantize_model_single_worker(
+        cls,
+        model,
+        quant_config: dict,
+        compute_dtype: torch.dtype = float16,
+        device="cuda",
+    ):
         # Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
         patch_params = dict([(k, quant_config) for k in cls.get_linear_tags()])
 
@@ -43,14 +49,14 @@ class BaseHQQVLLMModel(BaseHQQModel):
 
         cls.patch_model(
             model,
-            lambda layer: layer.to(compute_dtype).cuda(device),
+            lambda layer: layer.to(device=device, dtype=compute_dtype),
             _patch_linear,
             patch_params,
         )
 
     @classmethod
     def quantize_model(
-        cls, model, quant_config, compute_dtype: dtype = float16, device="cuda"
+        cls, model, quant_config, compute_dtype: torch.dtype = float16, device="cuda"
     ):
         workers = model.llm_engine.workers
         for i in range(len(workers)):
@@ -112,7 +118,11 @@ class BaseHQQVLLMModel(BaseHQQModel):
     #################################################
     @classmethod
     def from_quantized_single_worker(
-        cls, save_dir_or_hub: str, cache_dir: str = "", compute_dtype: dtype = float16, device="cuda:0"
+        cls,
+        save_dir_or_hub: str,
+        cache_dir: str = "",
+        compute_dtype: torch.dtype = float16,
+        device="cuda:0",
     ):
         # Get directory path
         save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)
@@ -134,7 +144,7 @@ class BaseHQQVLLMModel(BaseHQQModel):
         @torch.no_grad()
         def _load_module(module, params=None):
             if module.name not in weights:
-                return module.to(compute_dtype).cuda(device)
+                return module.to(device=device, dtype=compute_dtype)
 
             state_dict = weights[module.name]
             if ("W_q" in state_dict) and ("meta" in state_dict):
