@@ -182,7 +182,7 @@ quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
 model.quantize_model(quant_config=quant_config)
 ```
 
-#### Langechain
+#### Langchain
 Additionally, you can use the quantized model in Langchain (requires ```pip install langchain```) as follows:
 
 ```Python
