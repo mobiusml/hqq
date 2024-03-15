@@ -1,6 +1,7 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import torch
+from torch import nn
 import numpy as np
 from .quantize import HQQLinear, HQQBackend, Quantizer
 from .utils import cleanup
@@ -10,16 +11,16 @@ def _get_dense_param(
     in_features, out_features, device="cuda", trainable=True, dtype=torch.bfloat16
 ):
     W = (
-        torch.nn.Linear(in_features, out_features, bias=None)
+        nn.Linear(in_features, out_features, bias=None)
         .weight.data.t()
         .to(dtype)
         .to(device)
         .contiguous()
     )
-    return torch.nn.Parameter(W, requires_grad=trainable)
+    return nn.Parameter(W, requires_grad=trainable)
 
 
-class HQQLinearLoRA(torch.nn.Module):
+class HQQLinearLoRA(nn.Module):
     def __init__(self, linear_layer, peft_config):
         super().__init__()
 
@@ -47,11 +48,11 @@ class HQQLinearLoRA(torch.nn.Module):
             peft_config["train_bias"] if ("train_bias" in peft_config) else False
         )
         if self.bias is not None:
-            self.bias = torch.nn.Parameter(
+            self.bias = nn.Parameter(
                 self.bias, requires_grad=peft_config["train_bias"]
             )
         if (self.bias is None) and peft_config["train_bias"]:
-            self.bias = torch.nn.Parameter(
+            self.bias = nn.Parameter(
                 torch.zeros(
                     (self.out_features,), device=self.device, dtype=self.train_dtype
                 ),
@@ -67,12 +68,12 @@ class HQQLinearLoRA(torch.nn.Module):
         # Dropout
         if "dropout" in peft_config:
             self.peft_drop = (
-                torch.nn.Dropout(p=peft_config["dropout"])
+                nn.Dropout(p=peft_config["dropout"])
                 if (peft_config["dropout"] > 0.0)
-                else torch.nn.Identity()
+                else nn.Identity()
             )
         else:
-            self.peft_drop = torch.nn.Identity()
+            self.peft_drop = nn.Identity()
 
         # LoRA A/B
         self.peft_config = peft_config
@@ -115,8 +116,8 @@ class HQQLinearLoRA(torch.nn.Module):
             )
         else:
             # Init weights, as as the original LoRA implementation
-            torch.nn.init.kaiming_uniform_(self.lora_A, a=np.sqrt(5))
-            torch.nn.init.zeros_(self.lora_B)
+            nn.init.kaiming_uniform_(self.lora_A, a=np.sqrt(5))
+            nn.init.zeros_(self.lora_B)
 
     def forward(self, x):
         # Forward with base linear
@@ -231,7 +232,7 @@ class HQQLinearLoRAWithFakeQuant(HQQLinearLoRA):
 
 
 # Experimental
-class HQQLinearGroupedProj(torch.nn.Module):
+class HQQLinearGroupedProj(nn.Module):
     def __init__(self, linear_layer, peft_config):
         super().__init__()
 
@@ -260,14 +261,14 @@ class HQQLinearGroupedProj(torch.nn.Module):
         self.peft_config = peft_config
         self.proj_size = peft_config["proj_size"]
         self.proj_num = peft_config["proj_num"]
-        self.proj = torch.nn.Parameter(
+        self.proj = nn.Parameter(
             torch.stack(
                 [torch.eye(self.proj_size, dtype=self.train_dtype, device=self.device)]
                 * self.proj_num
             )
         )
         if peft_config["zero_trainable"]:
-            self.linear_layer.meta["zero"] = torch.nn.Parameter(
+            self.linear_layer.meta["zero"] = nn.Parameter(
                 self.linear_layer.meta["zero"].to(self.train_dtype), requires_grad=True
             )
 
