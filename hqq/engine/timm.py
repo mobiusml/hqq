@@ -3,7 +3,6 @@
 import timm
 import json
 import torch
-from typing import Dict
 from .base import HQQWrapper
 
 from ..models.base import BaseHQQModel
@@ -28,7 +27,7 @@ class HQQtimm(HQQWrapper):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def _make_quantizable(cls, model, quantized):
+    def _make_quantizable(cls, model, quantized: bool):
         model.hqq_quantized = quantized
         model.arch_key = model.default_cfg["architecture"]
         model.quantize_model = (
@@ -51,7 +50,7 @@ class HQQtimm(HQQWrapper):
         model.base_class = cls._get_hqq_class(model)
 
     @classmethod
-    def _validate_params(cls, params: Dict):
+    def _validate_params(cls, params: dict):
         pass
 
     @classmethod

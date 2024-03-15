@@ -3,7 +3,6 @@
 
 import transformers
 import torch
-from typing import Dict
 from .base import HQQWrapper
 
 from ..models.hf.llama import LlamaHQQ
@@ -23,6 +22,7 @@ AutoTokenizer = transformers.AutoTokenizer
 # Used to call super() on classmethods
 _Parent = transformers.AutoModelForCausalLM
 
+
 class HQQModelForCausalLM(_Parent, HQQWrapper):
     _HQQ_REGISTRY = _HQQ_REGISTRY
 
@@ -30,7 +30,7 @@ class HQQModelForCausalLM(_Parent, HQQWrapper):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def _make_quantizable(cls, model, quantized):
+    def _make_quantizable(cls, model, quantized: bool) -> None:
         model.hqq_quantized = quantized
         model.arch_key = model.config.architectures[0]
         model.quantize_model = (
@@ -54,7 +54,7 @@ class HQQModelForCausalLM(_Parent, HQQWrapper):
 
     # Force loading the model on CPU and unquantized
     @classmethod
-    def _validate_params(cls, params: Dict):
+    def _validate_params(cls, params: dict) -> None:
         for p in ["load_in_4bit", "load_in_8bit"]:  # ignore these
             if p in params:
                 params[p] = False

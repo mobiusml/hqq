@@ -1,9 +1,8 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 from abc import abstractmethod
-from typing import Dict
 from ..models.base import BaseHQQModel
-import torch
+from torch import float16, dtype
 
 # Wrapper that makes it easier to add quantization support to different engines (HF, VLLM, etc.)
 
@@ -19,7 +18,7 @@ class HQQWrapper:
         return cls._HQQ_REGISTRY[arch]
 
     @classmethod
-    def _validate_params(cls, params: Dict):
+    def _validate_params(cls, params: dict):
         pass
 
     @classmethod
@@ -27,7 +26,7 @@ class HQQWrapper:
         return hasattr(model, "hqq_quantized")
 
     @classmethod
-    def _make_quantizable(cls, model, quantized):
+    def _make_quantizable(cls, model, quantized: bool):
         model.hqq_quantized = quantized
         model.base_class = cls._get_hqq_class(model)
 
@@ -47,13 +46,13 @@ class HQQWrapper:
         assert model.hqq_quantized, "Model not quantized."
 
     @classmethod
-    def _set_quantized(cls, model, quantized):
+    def _set_quantized(cls, model, quantized: bool):
         model.hqq_quantized = quantized
 
     #####################################################
     @classmethod
     def quantize_model_(
-        cls, model, quant_config, compute_dtype=torch.float16, device="cuda"
+        cls, model, quant_config, compute_dtype: dtype = float16, device="cuda"
     ):
         if cls._is_quantizable(model) is False:
             cls._make_quantizable(model, quantized=False)
@@ -65,13 +64,17 @@ class HQQWrapper:
         cls._set_quantized(model, True)
 
     @classmethod
-    def save_quantized_(cls, model, save_dir):
+    def save_quantized_(cls, model, save_dir: str):
         cls._check_if_not_quantized(model)
         cls._get_hqq_class(model).save_quantized(model, save_dir=save_dir)
 
     @classmethod
     def from_quantized(
-        cls, save_dir_or_hub, compute_dtype=torch.float16, device="cuda", cache_dir=""
+        cls,
+        save_dir_or_hub,
+        compute_dtype: dtype = float16,
+        device="cuda",
+        cache_dir: str = "",
     ):
         # Both local and hub-support
         save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub)

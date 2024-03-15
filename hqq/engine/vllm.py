@@ -3,8 +3,8 @@
 
 # Import VLLM architectures here with the dummy_load trick
 import torch
+from torch import dtype, float16
 import transformers
-from typing import Dict
 from ..models.vllm.llama import LlamaForCausalLM, LlamaHQQ
 from ..models.base import BaseHQQModel
 from .base import HQQWrapper
@@ -59,10 +59,10 @@ class HQQLLM(_Parent, HQQWrapper):
 
         self.hqq_quantized = False
 
-    def _validate_params(self, kwargs: Dict):
+    def _validate_params(self, kwargs: dict):
         if "gpu_memory_utilization" not in kwargs:
             total_gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9  # GB
-            kwargs["gpu_memory_utilization"] = (HQQLLM.INIT_CACHE_MEM / total_gpu_mem)
+            kwargs["gpu_memory_utilization"] = HQQLLM.INIT_CACHE_MEM / total_gpu_mem
 
     # In case the user wants to use the fp16 model and skip quantization
     def cuda(self):
@@ -72,7 +72,9 @@ class HQQLLM(_Parent, HQQWrapper):
             workers[i].model = workers[i].model.half().cuda(i)
         return self
 
-    def quantize_model(self, quant_config, compute_dtype=torch.float16, device="cuda"):
+    def quantize_model(
+        self, quant_config: dict, compute_dtype: dtype = float16, device="cuda"
+    ):
         return self.quantize_model_(
             model=self,
             quant_config=quant_config,
@@ -80,7 +82,7 @@ class HQQLLM(_Parent, HQQWrapper):
             device=device,
         )
 
-    def save_quantized(self, save_dir):
+    def save_quantized(self, save_dir: str):
         return self.save_quantized_(model=self, save_dir=save_dir)
 
     @classmethod
@@ -92,10 +94,10 @@ class HQQLLM(_Parent, HQQWrapper):
     @classmethod
     def from_quantized(
         cls,
-        save_dir_or_hub,
-        compute_dtype=torch.float16,
-        cache_dir="",
-        tensor_parallel_size=1,
+        save_dir_or_hub: str,
+        compute_dtype: dtype = float16,
+        cache_dir: str = "",
+        tensor_parallel_size: int = 1,
     ):
         assert tensor_parallel_size == 1, "Only single GPU is supported."
         # Both local and hub-support
@@ -126,7 +128,6 @@ class HQQLLM(_Parent, HQQWrapper):
 
 
 try:
-    from typing import Dict
     from langchain.llms import VLLM as LangchainVLLMBase
     from langchain_core.pydantic_v1 import root_validator
 
@@ -136,7 +137,7 @@ try:
             return self
 
         @root_validator()
-        def validate_environment(cls, values: Dict) -> Dict:
+        def validate_environment(cls, values: dict) -> dict:
             return values
 except Exception:
     LangchainVLLM = None
