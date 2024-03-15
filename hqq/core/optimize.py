@@ -1,11 +1,14 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import torch
+from torch import Tensor
 import numpy as np
 
 
 # re-estimate the scale based on the inverse median
-def update_scale_inverse_median(W_f, scale, zero, axis: int, min_max):
+def update_scale_inverse_median(
+    W_f: Tensor, scale: Tensor, zero: Tensor, axis: int, min_max: list
+) -> tuple:
     scale_rng = 2e4
     z_val = 1e-4
     delta = 1e-2
@@ -44,9 +47,11 @@ def update_scale_inverse_median(W_f, scale, zero, axis: int, min_max):
 
 
 # Greedy local search
-def update_scale_grid_search(W_f, scale, zero, axis, min_max, N: int = 128 + 1):
+def update_scale_grid_search(
+    W_f: Tensor, scale: Tensor, zero: Tensor, axis: int, min_max: list, N: int = 128 + 1
+) -> Tensor:
     # Make sure it's an odd number so that the original scale is included
-    assert N % 2 == 1, 'Please check whether N: odd number'
+    assert N % 2 == 1, "Please check whether N: odd number"
     rng_dump = 0.05  # 0.05 / 1.
     z_val = 2e-4
 
@@ -83,7 +88,7 @@ def update_scale_grid_search(W_f, scale, zero, axis, min_max, N: int = 128 + 1):
 
 
 # Shrinking operator
-def shrink_lp_op(x, beta, lp_norm):
+def shrink_lp_op(x: Tensor, beta: float, lp_norm: float) -> Tensor:
     if lp_norm == 1:
         return torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - 1.0 / beta)
     else:
@@ -95,13 +100,13 @@ def shrink_lp_op(x, beta, lp_norm):
 # Proximal solver || W - dequantize(quantize(W))||_p^p - Experimental
 @torch.inference_mode()
 def optimize_weights_proximal_v2(
-    tensor,
-    scale,
-    zero,
-    min_max,
-    axis=0,
-    device="cuda",
-    opt_params={
+    tensor: Tensor,
+    scale: Tensor,
+    zero: Tensor,
+    min_max: list,
+    axis: int = 0,
+    device: str = "cuda",
+    opt_params: dict = {
         "lp_norm": 0.7,
         "beta": 1e1,
         "kappa": 1.01,
@@ -110,8 +115,8 @@ def optimize_weights_proximal_v2(
         "early_stop": True,
         "scale_gridsearch": False,
     },
-    verbose=False,
-):
+    verbose: bool = False,
+) -> tuple:
     # Params
     lp_norm = max(opt_params["lp_norm"], 0.1)
     beta = opt_params["beta"]
@@ -174,15 +179,15 @@ def optimize_weights_proximal_v2(
 # Proximal solver || W - dequantize(quantize(W))||_p^p
 @torch.inference_mode()
 def optimize_weights_proximal_legacy(
-    tensor,
-    scale,
-    zero,
-    min_max,
-    axis=0,
-    device="cuda",
-    opt_params={"lp_norm": 0.7, "beta": 1e1, "kappa": 1.01, "iters": 20},
-    verbose=False,
-):
+    tensor: Tensor,
+    scale: Tensor,
+    zero: Tensor,
+    min_max: list,
+    axis: int = 0,
+    device: str = "cuda",
+    opt_params: dict = {"lp_norm": 0.7, "beta": 1e1, "kappa": 1.01, "iters": 20},
+    verbose: bool = False,
+) -> tuple:
     lp_norm, beta, kappa, iters = (
         opt_params["lp_norm"],
         opt_params["beta"],
@@ -226,15 +231,15 @@ optimize_weights_proximal = optimize_weights_proximal_legacy
 
 # SGD solver  || W - dequantize(quantize(W))||_1 (p=1 only)
 def optimize_weights_autograd(
-    tensor,
-    scale,
-    zero,
-    min_max,
-    axis=0,
-    device="cuda",
-    opt_params={"lr": 2e-3, "iters": 2500},
-    verbose=False,
-):
+    tensor: Tensor,
+    scale: Tensor,
+    zero: Tensor,
+    min_max: list,
+    axis: int = 0,
+    device: str = "cuda",
+    opt_params: dict = {"lr": 2e-3, "iters": 2500},
+    verbose: bool = False,
+) -> tuple:
     W_f = tensor.to(device)
     params = {}
     params["scale"] = torch.nn.Parameter(scale.float().to(device), requires_grad=True)

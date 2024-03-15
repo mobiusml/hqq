@@ -1,7 +1,7 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import torch
-from torch import uint8, float16, nn, Tensor
+from torch import uint8, int32, float16, nn, Tensor
 import copy
 from enum import Enum
 
@@ -42,7 +42,7 @@ class Quantizer:
     unpack_view_dtype = {
         "8bit_u8": uint8,
         "4bit_u8": uint8,
-        "3bit_32": torch.int32,
+        "3bit_32": int32,
         "2bit_u8": uint8,
         "1bit_u8": uint8,
     }
@@ -61,7 +61,7 @@ class Quantizer:
         compute_dtype: torch.dtype | None = None,
         view_as_float: bool = False,
         device: str = "cuda",
-    ):
+    ) -> tuple:
         assert nbits in Quantizer.SUPPORTED_BITS, (
             "nbits=" + str(nbits) + " not supported."
         )
@@ -93,7 +93,7 @@ class Quantizer:
             _min = W.min(axis=axis, keepdim=True)[0]
             _max = W.max(axis=axis, keepdim=True)[0]
 
-        max_v = 2 ** nbits - 1
+        max_v = 2**nbits - 1
         min_v = 0
         min_max = [min_v, max_v]
 
@@ -157,10 +157,8 @@ class Quantizer:
 
     # Main dequantization: bit_unpacking > (W_q - z)*s > reshape
     @classmethod
-    def dequantize(cls, W_q: Tensor, meta) -> Tensor:
-        compute_dtype = (
-            meta["compute_dtype"] if ("compute_dtype" in meta) else float16
-        )
+    def dequantize(cls, W_q: Tensor, meta: dict) -> Tensor:
+        compute_dtype = meta["compute_dtype"] if ("compute_dtype" in meta) else float16
         if meta["packing"]:
             if meta["view_as_float"]:
                 W_q = W_q.view(meta["unpack_view_dtype"])
@@ -177,10 +175,8 @@ class Quantizer:
         return W_r
 
     @classmethod
-    def to_inplace(cls, W_q: Tensor, meta, device):
-        compute_dtype = (
-            meta["compute_dtype"] if ("compute_dtype" in meta) else float16
-        )
+    def to_inplace(cls, W_q: Tensor, meta: dict, device) -> tuple:
+        compute_dtype = meta["compute_dtype"] if ("compute_dtype" in meta) else float16
         if W_q is not None:
             W_q = W_q.to(device).contiguous()
         for key in meta:
@@ -197,10 +193,8 @@ class Quantizer:
         return W_q, meta
 
     @classmethod
-    def to_ooplace(cls, W_q: Tensor, meta, device):
-        compute_dtype = (
-            meta["compute_dtype"] if ("compute_dtype" in meta) else float16
-        )
+    def to_ooplace(cls, W_q: Tensor, meta: dict, device) -> tuple:
+        compute_dtype = meta["compute_dtype"] if ("compute_dtype" in meta) else float16
         if W_q is not None:
             W_q_c = W_q.to(device).contiguous()
         else:
@@ -222,11 +216,11 @@ class Quantizer:
         return W_q_c, meta_c
 
     @classmethod
-    def cuda(cls, W_q: Tensor, meta, device):
+    def cuda(cls, W_q: Tensor, meta: dict, device) -> tuple:
         return Quantizer.to_inplace(W_q, meta, device=device)
 
     @classmethod
-    def cpu(cls, W_q: Tensor, meta):
+    def cpu(cls, W_q: Tensor, meta: dict) -> tuple:
         return Quantizer.to_ooplace(W_q, meta, device="cpu")
 
 
@@ -256,7 +250,7 @@ class HQQBackend(Enum):
 # No cache: less memory, slower
 class HQQMatmulNoCacheDeq(torch.autograd.Function):
     @staticmethod
-    def forward(x, dequantize, bias):
+    def forward(x: Tensor, dequantize, bias: Tensor):
         out = torch.matmul(x, dequantize().t())
         if bias is not None:
             out += bias
@@ -359,8 +353,8 @@ class HQQLinear(nn.Module):
 
     def __init__(
         self,
-        linear_layer,
-        quant_config,
+        linear_layer: nn.Module | None,
+        quant_config: dict,
         del_orig: bool = True,
         compute_dtype: torch.dtype = float16,
         device: str = "cuda",
@@ -532,7 +526,13 @@ class HQQLinear(nn.Module):
         # Set in_features/out_features
         self.in_features, self.out_features = self.meta["shape"][::-1]
 
-    def quantize(self, W, weight_quant_params, scale_quant_params, zero_quant_params):
+    def quantize(
+        self,
+        W: Tensor,
+        weight_quant_params: dict,
+        scale_quant_params: dict,
+        zero_quant_params: dict,
+    ) -> None:
         quant_scale = scale_quant_params is not None
         quant_zero = zero_quant_params is not None
 
@@ -607,7 +607,7 @@ class HQQLinear(nn.Module):
             del meta[key]
         return W_est
 
-    def matmul(self, x, transpose=True):
+    def matmul(self, x: Tensor, transpose: bool = True) -> Tensor:
         weight = self.dequantize()
         return torch.matmul(x, weight.t() if (transpose) else weight)
 
@@ -615,20 +615,20 @@ class HQQLinear(nn.Module):
     def matmul_compile(self, *args, **kwargs):
         return self.matmul(*args, **kwargs)
 
-    def forward_pytorch_backprop(self, x):
+    def forward_pytorch_backprop(self, x: Tensor) -> Tensor:
         return HQQMatmulNoCacheMul.apply(x, self.matmul, self.bias)
 
-    def forward_pytorch_backprop_compile(self, x):
+    def forward_pytorch_backprop_compile(self, x: Tensor) -> Tensor:
         return HQQMatmulNoCacheMul.apply(x, self.matmul_compile, self.bias)
 
-    def forward_pytorch(self, x):
+    def forward_pytorch(self, x: Tensor) -> Tensor:
         out = torch.matmul(x, self.dequantize().t())
         if self.bias is not None:
             out += self.bias
         return out
 
     @torch.compile()
-    def forward_pytorch_compile(self, x):
+    def forward_pytorch_compile(self, x: Tensor) -> Tensor:
         return self.forward_pytorch(x)
 
     ##############################################
@@ -636,7 +636,7 @@ class HQQLinear(nn.Module):
     #############################################
     # Requires building the aten backend
     @torch.jit.ignore
-    def dequantize_Wq_aten(self, W_q: Tensor, meta):
+    def dequantize_Wq_aten(self, W_q: Tensor, meta: dict):
         if meta["view_as_float"]:
             W_q = W_q.view(meta["unpack_view_dtype"])
         return hqq_aten.dequantize(
@@ -710,44 +710,6 @@ class HQQLinear(nn.Module):
 
     def forward_aten_backprop(self, x: Tensor) -> Tensor:
         return HQQMatmulNoCacheDeq.apply(x, self.dequantize_aten, self.bias)
-
-    # def forward_aten(self, x):
-    # 	empt = torch.empty([0])
-    # 	W_q  = self.W_q
-    # 	meta = self.meta
-    # 	bias = self.bias
-
-    # 	W_q, W_s, W_z              = W_q,  empt if (meta['quant_scale']) else meta['scale'], empt if (meta['quant_zero']) else meta['zero']
-    # 	W_shape,  W_group_size     = meta['shape'], meta['group_size']
-    # 	W_nbits, W_axis, W_packing = meta['nbits'], meta['axis'], meta['packing']
-
-    # 	if(meta['quant_scale']):
-    # 		S_q, S_s, S_z              = meta['scale_q'],             meta['meta_scale']['scale'], meta['meta_scale']['zero']
-    # 		S_shape, S_group_size      = meta['meta_scale']['shape'], meta['meta_scale']['group_size']
-    # 		S_nbits, S_axis, S_packing = meta['meta_scale']['nbits'], meta['meta_scale']['axis'],  meta['meta_scale']['packing']
-    # 	else:
-    # 		S_q, S_s, S_z              = empt, empt, empt
-    # 		S_shape, S_group_size      = meta['shape'], -1
-    # 		S_nbits, S_axis, S_packing = -1, 0, ""
-
-    # 	if(meta['quant_zero']):
-    # 		Z_q, Z_s, Z_z              = meta['zero_q'],             meta['meta_zero']['scale'], meta['meta_zero']['zero']
-    # 		Z_shape, Z_group_size      = meta['meta_zero']['shape'], meta['meta_zero']['group_size']
-    # 		Z_nbits, Z_axis, Z_packing = meta['meta_zero']['nbits'], meta['meta_zero']['axis'],  meta['meta_zero']['packing']
-    # 	else:
-    # 		S_q, S_s, S_z              = empt, empt, empt
-    # 		S_shape, S_group_size      = meta['shape'], -1
-    # 		S_nbits, S_axis, S_packing = -1, 0, ""
-
-    # 	S_group_size = 0 if (S_group_size==None) else S_group_size
-    # 	Z_group_size = 0 if (Z_group_size==None) else Z_group_size
-
-    # 	args = [x, bias if (bias is not None) else empt,
-    # 			W_q, W_s, W_z, W_shape, W_group_size, W_nbits, W_axis, W_packing,
-    # 			S_q, S_s, S_z, S_shape, S_group_size, S_nbits, S_axis, S_packing,
-    # 			Z_q, Z_s, Z_z, Z_shape, Z_group_size, Z_nbits, Z_axis, Z_packing]
-
-    # 	return hqq_aten.forward_with_quant(*args)
 
 
 def hqq_base_quant_config(

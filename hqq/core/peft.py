@@ -1,6 +1,8 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import torch
+from torch import float16, float32
+from torch import Tensor
 from torch import nn
 import numpy as np
 from .quantize import HQQLinear, HQQBackend, Quantizer
@@ -8,8 +10,12 @@ from .utils import cleanup
 
 
 def _get_dense_param(
-    in_features, out_features, device="cuda", trainable=True, dtype=torch.bfloat16
-):
+    in_features: int,
+    out_features: int,
+    device="cuda",
+    trainable: bool = True,
+    dtype: torch.dtype = float32,
+) -> Tensor:
     W = (
         nn.Linear(in_features, out_features, bias=None)
         .weight.data.t()
@@ -21,7 +27,7 @@ def _get_dense_param(
 
 
 class HQQLinearLoRA(nn.Module):
-    def __init__(self, linear_layer, peft_config):
+    def __init__(self, linear_layer: nn.Module, peft_config: dict):
         super().__init__()
 
         # Device
@@ -48,9 +54,7 @@ class HQQLinearLoRA(nn.Module):
             peft_config["train_bias"] if ("train_bias" in peft_config) else False
         )
         if self.bias is not None:
-            self.bias = nn.Parameter(
-                self.bias, requires_grad=peft_config["train_bias"]
-            )
+            self.bias = nn.Parameter(self.bias, requires_grad=peft_config["train_bias"])
         if (self.bias is None) and peft_config["train_bias"]:
             self.bias = nn.Parameter(
                 torch.zeros(
@@ -63,7 +67,7 @@ class HQQLinearLoRA(nn.Module):
         if "compute_dtype" in peft_config:
             self.compute_dtype = peft_config["compute_dtype"]
         else:
-            self.compute_dtype = torch.float16
+            self.compute_dtype = float16
 
         # Dropout
         if "dropout" in peft_config:
@@ -119,7 +123,7 @@ class HQQLinearLoRA(nn.Module):
             nn.init.kaiming_uniform_(self.lora_A, a=np.sqrt(5))
             nn.init.zeros_(self.lora_B)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         # Forward with base linear
         x = x.to(self.compute_dtype)
 
@@ -144,10 +148,10 @@ class HQQLinearLoRA(nn.Module):
 
         return out
 
-    def merge_and_quantize(self, quant_config):
+    def merge_and_quantize(self, quant_config: dict) -> nn.Module:
         # Get initial weights
         W = self.linear_layer(
-            torch.eye(self.in_features, device=self.device, dtype=torch.float16)
+            torch.eye(self.in_features, device=self.device, dtype=float16)
         ).t()  # == self.linear_layer.dequantize()
 
         # Merge weights
@@ -164,7 +168,7 @@ class HQQLinearLoRA(nn.Module):
 
         return new_hqq_layer
 
-    def cast(self, dtype=torch.float16):
+    def cast(self, dtype: torch.dtype = float16):
         self.lora_A.data = self.lora_A.data.to(dtype)
         self.lora_B.data = self.lora_B.data.to(dtype)
         if self.bias is not None:
@@ -189,7 +193,7 @@ class HQQLinearLoRA(nn.Module):
 
 # LoRA with fake quantization
 class HQQLinearLoRAWithFakeQuant(HQQLinearLoRA):
-    def __init__(self, linear_layer, peft_config):
+    def __init__(self, linear_layer: nn.Module, peft_config: dict):
         super(HQQLinearLoRAWithFakeQuant, self).__init__(linear_layer, peft_config)
         self.quant_param = peft_config["quant_param"]
 
@@ -205,7 +209,7 @@ class HQQLinearLoRAWithFakeQuant(HQQLinearLoRA):
             weight_est = weight
         return weight_est
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x_dtype = x.dtype
 
         # Get initial weights
@@ -233,7 +237,7 @@ class HQQLinearLoRAWithFakeQuant(HQQLinearLoRA):
 
 # Experimental
 class HQQLinearGroupedProj(nn.Module):
-    def __init__(self, linear_layer, peft_config):
+    def __init__(self, linear_layer: nn.Module, peft_config: dict):
         super().__init__()
 
         # Device
@@ -273,7 +277,7 @@ class HQQLinearGroupedProj(nn.Module):
             )
 
     @torch.compile()
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x_dtype = x.dtype
 
         # Forward with base linear
@@ -301,7 +305,7 @@ class HQQLinearGroupedProj(nn.Module):
 
         return out
 
-    def cast(self, dtype=torch.float16):
+    def cast(self, dtype: torch.dtype = float16):
         self.proj.data = self.proj.data.to(dtype)
         self.linear_layer.meta["zero"] = self.linear_layer.meta["zero"].to(dtype)
         if self.bias is not None:
@@ -344,7 +348,7 @@ def autoname_modules(model):
 
 
 # Patching functions
-def patch_linear_add_peft(layer, patch_params):
+def patch_linear_add_peft(layer: nn.Module, patch_params: dict | None) -> nn.Module:
     _peft_config = patch_params
     if _peft_config:
         lora_type = (
@@ -356,7 +360,7 @@ def patch_linear_add_peft(layer, patch_params):
     return new_layer
 
 
-def patch_linear_merge_peft(layer, patch_params):
+def patch_linear_merge_peft(layer: nn.Module, patch_params: dict | None) -> nn.Module:
     _quant_config = patch_params
     if _quant_config:
         new_layer = layer.merge_and_quantize(_quant_config)
@@ -367,7 +371,7 @@ def patch_linear_merge_peft(layer, patch_params):
     return new_layer
 
 
-def patch_linear_cast_peft(layer, patch_params):
+def patch_linear_cast_peft(layer: nn.Module, patch_params: dict | None) -> nn.Module:
     if is_hqq_lora_layer(layer):
         layer.cast(patch_params)
     return layer
@@ -387,7 +391,9 @@ class PeftUtils:
         return base_class
 
     @classmethod
-    def add_lora(cls, model, lora_params, base_class=None, verbose=True):
+    def add_lora(
+        cls, model, lora_params, base_class: bool = None, verbose: bool = True
+    ) -> None:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
 
@@ -407,7 +413,9 @@ class PeftUtils:
         HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP)
 
     @classmethod
-    def merge_lora(cls, model, merge_lora_params, base_class=None, verbose=True):
+    def merge_lora(
+        cls, model, merge_lora_params, base_class: bool = None, verbose: bool = True
+    ) -> None:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
 
@@ -417,7 +425,9 @@ class PeftUtils:
         )
 
     @classmethod
-    def cast_lora_weights(cls, model, dtype, base_class=None, verbose=True):
+    def cast_lora_weights(
+        cls, model, dtype: torch.dtype, base_class: bool = None, verbose: bool = True
+    ) -> None:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
 
@@ -433,7 +443,9 @@ class PeftUtils:
         )
 
     @classmethod
-    def save_lora_weights(cls, model, filename, base_class=None, verbose=True):
+    def save_lora_weights(
+        cls, model, filename: str, base_class: bool = None, verbose: bool = True
+    ) -> None:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
 
@@ -460,7 +472,9 @@ class PeftUtils:
         torch.save(lora_global_params, filename)
 
     @classmethod
-    def load_lora_weights(cls, model, filename, base_class=None, verbose=True):
+    def load_lora_weights(
+        cls, model, filename: str, base_class: bool = None, verbose: bool = True
+    ) -> None:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
 

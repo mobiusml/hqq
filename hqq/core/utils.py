@@ -10,17 +10,13 @@ def cleanup() -> None:
     gc.collect()
 
 
-def is_divisible(val1, val2) -> bool:
+def is_divisible(val1: int, val2: int) -> bool:
     return int(val2 * np.ceil(val1 / val2)) == val1
-
-
-def make_multiple(val, multiple) -> int:
-    return int(multiple * np.ceil(val / float(multiple)))
 
 
 def zero_pad_row(
     tensor: torch.Tensor, num_rows: int, dtype: torch.dtype | None = None
-) -> Tensor:
+) -> torch.Tensor:
     out = torch.zeros(
         [num_rows, tensor.shape[1]],
         device=tensor.device,

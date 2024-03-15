@@ -22,23 +22,21 @@ class BitPack:
     # 4-bit
     ################################################
     @staticmethod
-    def pack_4bit_u8(W_q: Tensor):  # uint8 > uint8/2
+    def pack_4bit_u8(W_q: Tensor) -> Tensor:  # uint8 > uint8/2
         W_q = W_q.to(uint8)
         _step = int(len(W_q) / 2)
 
         return (W_q[:_step] << 4) | W_q[_step:]
 
     @staticmethod
-    def unpack_4bit_u8_cat(W_q: Tensor):  # uint8/2 > uint8
+    def unpack_4bit_u8_cat(W_q: Tensor) -> Tensor:  # uint8/2 > uint8
         return torch.cat([(W_q & 0b11110000) >> 4, W_q & 0b00001111], axis=0)
 
     # A bit faster than the _cat version
     @staticmethod
-    def unpack_4bit_u8(W_q: Tensor):  # uint8/2 > uint8
+    def unpack_4bit_u8(W_q: Tensor) -> Tensor:  # uint8/2 > uint8
         _step = W_q.shape[0]
-        tmp = torch.empty(
-            [2 * _step, W_q.shape[1]], dtype=uint8, device=W_q.device
-        )
+        tmp = torch.empty([2 * _step, W_q.shape[1]], dtype=uint8, device=W_q.device)
         tmp[:_step] = (W_q & 0b11110000) >> 4
         tmp[_step:] = W_q & 0b00001111
 
@@ -47,7 +45,7 @@ class BitPack:
     # 2-bit
     ################################################
     @staticmethod
-    def pack_2bit_u8(W_q: Tensor):  # uint8 > uint8/4
+    def pack_2bit_u8(W_q: Tensor) -> Tensor:  # uint8 > uint8/4
         W_q = W_q.to(uint8)
         _step = int(len(W_q) / 4)
 
@@ -59,7 +57,7 @@ class BitPack:
         )
 
     @staticmethod
-    def unpack_2bit_u8_cat(W_q: Tensor):
+    def unpack_2bit_u8_cat(W_q: Tensor) -> Tensor:
         return torch.cat(
             [
                 (W_q & 0b11000000) >> 6,
@@ -72,11 +70,9 @@ class BitPack:
 
     # A bit faster than the _cat version
     @staticmethod
-    def unpack_2bit_u8(W_q: Tensor):
+    def unpack_2bit_u8(W_q: Tensor) -> Tensor:
         _step = W_q.shape[0]
-        tmp = torch.empty(
-            [4 * _step, W_q.shape[1]], dtype=uint8, device=W_q.device
-        )
+        tmp = torch.empty([4 * _step, W_q.shape[1]], dtype=uint8, device=W_q.device)
         tmp[:_step] = (W_q & 0b11000000) >> 6
         tmp[_step : 2 * _step] = (W_q & 0b00110000) >> 4
         tmp[2 * _step : 3 * _step] = (W_q & 0b00001100) >> 2
@@ -87,7 +83,7 @@ class BitPack:
     # 3bit
     ################################################
     @staticmethod
-    def pack_3bit_32(W_q_in: Tensor):
+    def pack_3bit_32(W_q_in: Tensor) -> Tensor:
         W_q = torch.zeros(
             [int(10 * np.ceil(W_q_in.shape[0] / 10.0)), W_q_in.shape[1]],
             device=W_q_in.device,
@@ -107,10 +103,11 @@ class BitPack:
             | (W_q[_step * 8 : _step * 9] << 3)
             | (W_q[_step * 9 :])
         )
+
         return W_q
 
     @staticmethod
-    def unpack_3bit_32_cat(W_q: Tensor):
+    def unpack_3bit_32_cat(W_q: Tensor) -> Tensor:
         return torch.cat(
             [
                 ((W_q & 0b00111000000000000000000000000000) >> 27),
@@ -129,11 +126,9 @@ class BitPack:
 
     # A bit faster than _cat version
     @staticmethod
-    def unpack_3bit_32(W_q: Tensor):
+    def unpack_3bit_32(W_q: Tensor) -> Tensor:
         _step = W_q.shape[0]
-        tmp = torch.empty(
-            [10 * _step, W_q.shape[1]], dtype=uint8, device=W_q.device
-        )
+        tmp = torch.empty([10 * _step, W_q.shape[1]], dtype=uint8, device=W_q.device)
         tmp[:_step] = (W_q & 0b00111000000000000000000000000000) >> 27
         tmp[1 * _step : 2 * _step] = (W_q & 0b00000111000000000000000000000000) >> 24
         tmp[2 * _step : 3 * _step] = (W_q & 0b00000000111000000000000000000000) >> 21
@@ -150,7 +145,7 @@ class BitPack:
     # 1bit
     ################################################
     @staticmethod
-    def pack_1bit_u8(W_q: Tensor):
+    def pack_1bit_u8(W_q: Tensor) -> Tensor:
         W_q = W_q.to(uint8)
         _step = int(len(W_q) / 8)
 
@@ -166,12 +161,11 @@ class BitPack:
         )
 
     @staticmethod
-    def unpack_1bit_u8(W_q: Tensor):
+    def unpack_1bit_u8(W_q: Tensor) -> Tensor:
         _step = W_q.shape[0]
-        tmp = torch.empty(
-            [8 * _step, W_q.shape[1]], dtype=uint8, device=W_q.device
-        )
+        tmp = torch.empty([8 * _step, W_q.shape[1]], dtype=uint8, device=W_q.device)
         tmp[:_step] = (W_q & 0b10000000) >> 7
+
         tmp[1 * _step : 2 * _step] = (W_q & 0b01000000) >> 6
         tmp[2 * _step : 3 * _step] = (W_q & 0b00100000) >> 5
         tmp[3 * _step : 4 * _step] = (W_q & 0b00010000) >> 4
@@ -200,7 +194,7 @@ class BitPack:
         )
 
     @staticmethod
-    def pack_4bit_32(W_q: Tensor):
+    def pack_4bit_32(W_q: Tensor) -> Tensor:
         W_q = W_q.to(int32)
         _step = int(len(W_q) / 8)
         W_q = (
