@@ -58,7 +58,7 @@ class HQQLinearLoRA(nn.Module):
 
         if self.bias is not None:
             self.bias = nn.Parameter(self.bias, requires_grad=self.train_bias)
-            if(self.train_bias):
+            if self.train_bias:
                 self.bias.data = self.bias.data.to(self.train_dtype)
 
         if (self.bias is None) and self.train_bias:
@@ -114,40 +114,46 @@ class HQQLinearLoRA(nn.Module):
                 + str(self.out_features)
                 + ")"
             )
-            self.lora_A.data = (
-                peft_config["lora_init"]["lora_A"].to(device=self.device, dtype=self.train_dtype, non_blocking=True)
+            self.lora_A.data = peft_config["lora_init"]["lora_A"].to(
+                device=self.device, dtype=self.train_dtype, non_blocking=True
             )
-            self.lora_B.data = (
-                peft_config["lora_init"]["lora_B"].to(device=self.device, dtype=self.train_dtype, non_blocking=True)
+            self.lora_B.data = peft_config["lora_init"]["lora_B"].to(
+                device=self.device, dtype=self.train_dtype, non_blocking=True
             )
         else:
             # Init weights, as as the original LoRA implementation
             nn.init.kaiming_uniform_(self.lora_A, a=np.sqrt(5))
             nn.init.zeros_(self.lora_B)
 
-    def forward_lora(self, x: Tensor) -> Tensor: #output is self.train_dtype
-        return torch.matmul(torch.matmul(self.peft_drop(x.to(self.train_dtype)), self.lora_A), self.lora_B) * self.scaling
+    def forward_lora(self, x: Tensor) -> Tensor:  # output is self.train_dtype
+        return (
+            torch.matmul(
+                torch.matmul(self.peft_drop(x.to(self.train_dtype)), self.lora_A),
+                self.lora_B,
+            )
+            * self.scaling
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         x_dtype = x.dtype
 
-        #Forward with the base linear layer
+        # Forward with the base linear layer
         out = self.linear_layer(x)
 
         # LoRA
-        if(self.train_bias):
+        if self.train_bias:
             out += (self.forward_lora(x) + self.bias).to(x_dtype)
 
         else:
-            out += self.forward_lora(x).to(x_dtype) 
+            out += self.forward_lora(x).to(x_dtype)
             if self.bias is not None:
-                out += self.bias 
+                out += self.bias
 
         return out
 
     def merge_and_quantize(self, quant_config: dict) -> nn.Module:
-        #not easy to figure out the type for "any" potential linear layer (nn.Linear, HQQLinear, etc.)
-        for _dtype in [float16, bfloat16, float32]: 
+        # not easy to figure out the type for "any" potential linear layer (nn.Linear, HQQLinear, etc.)
+        for _dtype in [float16, bfloat16, float32]:
             try:
                 # Get initial weights
                 W = self.linear_layer(
@@ -175,9 +181,9 @@ class HQQLinearLoRA(nn.Module):
         self.lora_B.data = self.lora_B.data.to(dtype)
         if self.bias is not None:
             self.bias.data = self.bias.data.to(dtype)
-        if(isinstance(self.scaling, nn.Parameter)):
+        if isinstance(self.scaling, nn.Parameter):
             self.scaling.data = self.scaling.data.to(dtype)
-        if(isinstance(self.scaling, Tensor)):
+        if isinstance(self.scaling, Tensor):
             self.scaling = self.scaling.to(dtype)
         return self
 
@@ -192,18 +198,17 @@ class HQQLinearLoRA(nn.Module):
     def load_state_dict(self, state_dict):
         self.lora_A.data = state_dict["lora_A"].data.to(self.device)
         self.lora_B.data = state_dict["lora_B"].data.to(self.device)
-        
+
         if state_dict["bias"] is not None:
             self.bias.data = state_dict["bias"].data.to(self.device)
 
-        #Handle different use-cases of scaling
-        if(isinstance(state_dict["scaling"], (int, float))):
+        # Handle different use-cases of scaling
+        if isinstance(state_dict["scaling"], (int, float)):
             self.scaling = state_dict["scaling"]
-        if(isinstance(state_dict["scaling"], nn.Parameter)):
+        if isinstance(state_dict["scaling"], nn.Parameter):
             self.scaling.data = state_dict["scaling"].data.to(self.device)
-        if(isinstance(state_dict["scaling"], Tensor)):
+        if isinstance(state_dict["scaling"], Tensor):
             self.scaling = state_dict["scaling"].to(self.device)
-
 
 
 # LoRA with fake quantization
