@@ -128,7 +128,7 @@ class HQQLinearLoRA(nn.Module):
     def forward_lora(self, x: Tensor) -> Tensor:  # output is self.train_dtype
         return (
             torch.matmul(
-                torch.matmul(self.peft_drop(x.to(self.train_dtype)), self.lora_A),
+                torch.matmul(self.peft_drop(x.to(self.lora_A.dtype)), self.lora_A),
                 self.lora_B,
             )
             * self.scaling
