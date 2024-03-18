@@ -246,6 +246,10 @@ class HQQBackend(Enum):
     PYTORCH_BACKPROP_COMPILE = "forward_pytorch_backprop_compile"
     ATEN_BACKPROP = "forward_aten_backprop"
 
+    PYTORCH_FORWARD = "forward_pytorch"
+    PYTORCH_FORWARD_COMPILE = "forward_pytorch_compile"
+    ATEN_FORWARD = "forward_aten"
+
 
 # No cache: less memory, slower
 class HQQMatmulNoCacheDeq(torch.autograd.Function):
@@ -779,6 +783,7 @@ class HQQLinear(nn.Module):
         out = torch.matmul(x, W_est.t())
         if self.bias is not None:
             out += self.bias
+
         return out
 
     def forward_aten_backprop(self, x: Tensor) -> Tensor:
