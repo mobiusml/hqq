@@ -14,7 +14,7 @@ from huggingface_hub import snapshot_download
 from ..core.quantize import HQQLinear
 
 # Defined what is qualified as "linear layer"
-_LINEAR_LAYERS = [nn.Linear]
+_QUANT_LAYERS = [nn.Linear]
 _IGNORE_LINEAR = ["lm_head"]
 
 
@@ -53,7 +53,7 @@ def name_to_linear_tag(name: str) -> str:
 def get_linear_tags_from_model(model, ignore: list) -> list:
     linear_tags = set()
     for name, module in model.named_modules():
-        if (type(module) in _LINEAR_LAYERS) and (name.split(".")[-1] not in ignore):
+        if (type(module) in _QUANT_LAYERS) and (name.split(".")[-1] not in ignore):
             linear_tags.add(name_to_linear_tag(name))
     return list(linear_tags)
 
@@ -71,7 +71,7 @@ class BasePatch:
 
         tmp_mapping = {}
         for name, module in model.named_modules():
-            if (type(module) not in _LINEAR_LAYERS) and (name not in ignore_tags):
+            if (type(module) not in _QUANT_LAYERS) and (name not in ignore_tags):
                 tmp_mapping[name] = module
 
         for name in tqdm(tmp_mapping, disable=not verbose):
@@ -90,7 +90,7 @@ class BasePatch:
 
         tmp_mapping = {}
         for name, module in model.named_modules():
-            if (type(module) in _LINEAR_LAYERS) and (name not in ignore_tags):
+            if (type(module) in _QUANT_LAYERS) and (name not in ignore_tags):
                 tmp_mapping[name] = module
 
         for name in tqdm(tmp_mapping, disable=not verbose):
@@ -241,6 +241,9 @@ class BaseHQQModel:
         # Set base class
         model.base_class = cls
 
+        # Sync
+        torch.cuda.synchronize()
+
         return model
 
     # Prepares model weights by iterating through modules. It might some parameters that are NOT modules like model.param1
@@ -362,5 +365,8 @@ class BaseHQQModel:
 
         # Set base class
         model.base_class = cls
+
+        # Sync
+        torch.cuda.synchronize()
 
         return model

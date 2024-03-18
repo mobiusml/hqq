@@ -115,10 +115,10 @@ class HQQLinearLoRA(nn.Module):
                 + ")"
             )
             self.lora_A.data = peft_config["lora_init"]["lora_A"].to(
-                device=self.device, dtype=self.train_dtype, non_blocking=True
+                device=self.device, dtype=self.train_dtype
             )
             self.lora_B.data = peft_config["lora_init"]["lora_B"].to(
-                device=self.device, dtype=self.train_dtype, non_blocking=True
+                device=self.device, dtype=self.train_dtype
             )
         else:
             # Init weights, as as the original LoRA implementation
