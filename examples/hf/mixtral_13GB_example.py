@@ -1,6 +1,5 @@
 ################################################################################################
-# git clone https://github.com/mobiusml/hqq/; cd hqq; pip install .;
-# cd hqq/kernels && python setup_cuda.py install; cd ..; cd ..; cd ..;
+# pip install hqq
 # pip install flash-attn --no-build-isolation
 # pip install transformers --upgrade
 # num_threads=8; OMP_NUM_THREADS=$num_threads CUDA_VISIBLE_DEVICES=0 ipython 
@@ -48,7 +47,7 @@ model.eval();
 
 ################################################################################################
 #Set backend
-HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
+HQQLinear.set_backend(HQQBackend.ATEN)
 model = torch.compile(model)
 
 #Warmup 
