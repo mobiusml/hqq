@@ -46,7 +46,7 @@ setup(
     author="Dr. Hicham Badri",
     author_email="hicham@mobiuslabs.com",
     license="Apache 2",
-    packages=find_packages(include=["hqq", "hqq/*"]),
+    packages=find_packages(include=["hqq", "hqq.*"]),
     cmdclass={
         "install": InstallCommand,
         "develop": DevelopCommand,
