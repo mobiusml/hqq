@@ -47,6 +47,10 @@ setup(
     author_email="hicham@mobiuslabs.com",
     license="Apache 2",
     packages=find_packages(include=["hqq", "hqq.*"]),
+    package_data={
+        "hqq": ["kernels/*.cpp", "kernels/*.cu"],
+    },
+    include_package_data=True,
     cmdclass={
         "install": InstallCommand,
         "develop": DevelopCommand,
