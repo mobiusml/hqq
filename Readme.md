@@ -13,9 +13,11 @@ To get the latest version, you can install the core library directly via ```pip 
 
 Alternatively, clone the repo and run ```pip install .``` from this current folder. 
 
-#### Note:
+#### Note
 For some reason, packages installed via ```pip install hqq``` don't build the CUDA kernels automatically. If you need to build the CUDA backend manually, you can do it as follows:
-```cd hqq/kernels && python setup_cuda.py install; cd ../../..; ```
+
+```cd hqq/kernels && python setup_cuda.py install; cd ../../..; ```.
+
 Or simply use ```pip install git+https://github.com/mobiusml/hqq.git``` instead for the moment. 
 
 ### Basic Usage
