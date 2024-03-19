@@ -250,6 +250,9 @@ class HQQBackend(Enum):
     PYTORCH_FORWARD_COMPILE = "forward_pytorch_compile"
     ATEN_FORWARD = "forward_aten"
 
+    # Experimental
+    ATEN_FORWARD_INT8 = "forward_aten_int8"
+
 
 # No cache: less memory, slower
 class HQQMatmulNoCacheDeq(torch.autograd.Function):
@@ -788,6 +791,27 @@ class HQQLinear(nn.Module):
 
     def forward_aten_backprop(self, x: Tensor) -> Tensor:
         return HQQMatmulNoCacheDeq.apply(x, self.dequantize_aten, self.bias)
+
+    # TODO: as fused kernel in CUDA
+    def _get_int8_matrix(self, M):
+        scale = torch.abs(M).amax() / 127.0
+        return torch.round(M / scale).to(torch.int8), scale.float()
+
+    # TODO: in ATEN
+    @torch.compile()
+    def _matmul_int8(self, A, B):
+        dtype = A.dtype
+        A, scale_A = self._get_int8_matrix(A)
+        B, scale_B = self._get_int8_matrix(B)
+        return (torch._int_mm(A, B) * (scale_A * scale_B)).to(dtype)
+
+    def forward_aten_int8(self, x: Tensor) -> Tensor:
+        W_est = self.dequantize_aten()
+        out = self._matmul_int8(x[0], W_est.t())[None, ...]
+        if self.bias is not None:
+            out += self.bias
+
+        return out
 
 
 def hqq_base_quant_config(
