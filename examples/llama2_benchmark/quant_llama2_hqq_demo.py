@@ -26,10 +26,7 @@ quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
 
 model.quantize_model(quant_config=quant_config)
 
-#Optional: set the backend
-#HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)
-
-# #Evaluate the quantized model 
+#Evaluate the quantized model 
 ######################################################################################
 from eval_model import eval_wikitext2
 eval_wikitext2(model, tokenizer, verbose=True) 
