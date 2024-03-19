@@ -38,7 +38,7 @@ __global__ void dequantize_8bit_u8_kernel(unsigned char* Wq_packed, scalar_t* sc
 }
 
 
-torch::Tensor dequantize_8bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero)
+torch::Tensor dequantize_8bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero)
 {
 	CHECK_INPUT(Wq_packed);
 	CHECK_INPUT(scale);
@@ -83,7 +83,7 @@ __global__ void unpack_4bit_u8_kernel(unsigned char* Wq_packed, unsigned char* W
 	Wq_unpacked[i + n] = (Wq_packed[i] & 0x0F);       //Second chunk	
 }
 
-torch::Tensor unpack_4bit_u8(torch::Tensor Wq_packed)
+torch::Tensor unpack_4bit_u8(torch::Tensor &Wq_packed)
 {
 	CHECK_INPUT(Wq_packed);
 
@@ -115,7 +115,7 @@ __global__ void dequantize_4bit_u8_kernel(unsigned char* Wq_packed, scalar_t* sc
 	W_r[i + n] = (scalar_t((Wq_packed[i] & 0x0F))      - zero[j])*scale[j];  //Second chunk
 }
 
-torch::Tensor dequantize_4bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero)
+torch::Tensor dequantize_4bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero)
 {
 	CHECK_INPUT(Wq_packed);
 	CHECK_INPUT(scale);
@@ -164,7 +164,7 @@ __global__ void unpack_2bit_u8_kernel(unsigned char* Wq_packed, unsigned char* W
 }
 
 
-torch::Tensor unpack_2bit_u8(torch::Tensor Wq_packed)
+torch::Tensor unpack_2bit_u8(torch::Tensor &Wq_packed)
 {
 	CHECK_INPUT(Wq_packed);
 
@@ -226,7 +226,7 @@ __global__ void dequantize_2bit_u8_kernel(unsigned char* Wq_packed, scalar_t* sc
 
 
 
-torch::Tensor dequantize_2bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero)
+torch::Tensor dequantize_2bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero)
 {
 	CHECK_INPUT(Wq_packed);
 	CHECK_INPUT(scale);
@@ -277,7 +277,7 @@ __global__ void unpack_1bit_u8_kernel(unsigned char* Wq_packed, unsigned char* W
 	Wq_unpacked[i + n*7] = (Wq_packed[i] & 0x01);       //8th chunk	
 }
 
-torch::Tensor unpack_1bit_u8(torch::Tensor Wq_packed)
+torch::Tensor unpack_1bit_u8(torch::Tensor &Wq_packed)
 {
 	CHECK_INPUT(Wq_packed);
 
@@ -343,7 +343,7 @@ __global__ void dequantize_1bit_u8_kernel(unsigned char* Wq_packed, scalar_t* sc
 // }
 
 
-torch::Tensor dequantize_1bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero)
+torch::Tensor dequantize_1bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero)
 {
 	CHECK_INPUT(Wq_packed);
 	CHECK_INPUT(scale);
@@ -399,7 +399,7 @@ __global__ void unpack_3bit_32_kernel(int32_t* Wq_packed, unsigned char* Wq_unpa
 }
 
 
-torch::Tensor unpack_3bit_32(torch::Tensor Wq_packed)
+torch::Tensor unpack_3bit_32(torch::Tensor &Wq_packed)
 {
 	CHECK_INPUT(Wq_packed);
 
@@ -439,7 +439,7 @@ __global__ void dequantize_3bit_32_kernel(int32_t* Wq_packed, scalar_t* scale, s
 	W_r[i + n*9] = (scalar_t((Wq_packed[i] & 0x00000007))       - zero[j])*scale[j];  //10th chunk	
 }
 
-torch::Tensor dequantize_3bit_32(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero)
+torch::Tensor dequantize_3bit_32(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero)
 {
 	CHECK_INPUT(Wq_packed);
 	CHECK_INPUT(scale);

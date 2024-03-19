@@ -6,19 +6,19 @@
 #include <torch/script.h>
 #include <cassert>
 
-torch::Tensor dequantize_8bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero);
+torch::Tensor dequantize_8bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero);
 
-torch::Tensor unpack_4bit_u8(torch::Tensor Wq_packed);
-torch::Tensor dequantize_4bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero);
+torch::Tensor unpack_4bit_u8(torch::Tensor &Wq_packed);
+torch::Tensor dequantize_4bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero);
 
-torch::Tensor unpack_3bit_32(torch::Tensor Wq_packed);
-torch::Tensor dequantize_3bit_32(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero);
+torch::Tensor unpack_3bit_32(torch::Tensor &Wq_packed);
+torch::Tensor dequantize_3bit_32(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero);
 
-torch::Tensor unpack_2bit_u8(torch::Tensor Wq_packed);
-torch::Tensor dequantize_2bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero);
+torch::Tensor unpack_2bit_u8(torch::Tensor &Wq_packed);
+torch::Tensor dequantize_2bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero);
 
-torch::Tensor unpack_1bit_u8(torch::Tensor Wq_packed);
-torch::Tensor dequantize_1bit_u8(torch::Tensor Wq_packed, torch::Tensor scale, torch::Tensor zero);
+torch::Tensor unpack_1bit_u8(torch::Tensor &Wq_packed);
+torch::Tensor dequantize_1bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero);
 
 /*	scale & zero should be unquantized and already on the target device. 
 	All tensors should be contiguous !!
