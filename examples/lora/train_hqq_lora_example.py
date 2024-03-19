@@ -22,23 +22,20 @@ model.quantize_model(quant_config=quant_config)
 #Add Peft
 ######################################################################################
 from hqq.core.peft import PeftUtils
+from hqq.core.quantize import *
 
-train_dtype      = torch.bfloat16 #torch.float32 / torch.bfloat16
+train_dtype      = torch.float32 
 base_lora_params = {'lora_type':'default', 'r':32, 'lora_alpha':64, 'dropout':0.05, 'train_dtype':train_dtype}
 lora_params      = {'self_attn.q_proj': base_lora_params,
-			        'self_attn.k_proj': base_lora_params,
-			        'self_attn.v_proj': base_lora_params,
-			        'self_attn.o_proj': base_lora_params,
-			        'mlp.gate_proj'   : None,
-			        'mlp.up_proj'     : None,
-			        'mlp.down_proj'   : None}
+		    'self_attn.k_proj': base_lora_params,
+		    'self_attn.v_proj': base_lora_params,
+		    'self_attn.o_proj': base_lora_params,
+		    'mlp.gate_proj'   : None,
+		    'mlp.up_proj'     : None,
+		    'mlp.down_proj'   : None}
 
 #Apply LoRA
 PeftUtils.add_lora(model, lora_params)
-
-#Optional: faster but might not work properly on older GPUs
-from hqq.core.quantize import *
-HQQLinear.set_backend(HQQBackend.PYTORCH_BACKPROP_COMPILE)
 
 #Dataset 
 ######################################################################################
@@ -59,12 +56,6 @@ grad_acc    = 1
 max_tokens  = 256 
 max_samples = 5000
 
-#Warmup for torch compile
-with torch.no_grad():
-    out = model(torch.ones((batch_size, max_tokens), dtype=torch.int32, device='cuda'))
-del out 
-cleanup()
-
 #OpenAssistant
 ##########################################################################
 dataset     = load_dataset("timdettmers/openassistant-guanaco", split="train") 
@@ -77,13 +68,9 @@ def pre_process_chat(chat):
 def assitant_prompt(prompt):
 	return '### Human:' + prompt + '\n### Assistant:'
 
-# #Filter short samples
-# dataset     = Dataset.from_dict({'text':[dataset[i]['text']     for i in tqdm(range(len(dataset)))     if len(dataset[i]['text'])>500]})
-# dataset_val = Dataset.from_dict({'text':[dataset_val[i]['text'] for i in tqdm(range(len(dataset_val))) if len(dataset_val[i]['text'])>500]})
 
 random.seed(100)
-idx = random.sample(range(len(dataset)), min(max_samples, len(dataset)))
-
+idx         = random.sample(range(len(dataset)), min(max_samples, len(dataset)))
 dataset     = Dataset.from_dict({'text':[pre_process_chat(dataset[i]['text']) for i in tqdm(idx)]})
 dataset_val = Dataset.from_dict({'text':[pre_process_chat(dataset_val[i]['text']) for i in range(len(dataset_val))]})
 
