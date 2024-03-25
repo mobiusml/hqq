@@ -76,6 +76,7 @@ class HQQWrapper:
         compute_dtype: torch.dtype = float16,
         device="cuda",
         cache_dir: str = "",
+        adapter: str = None,
     ):
         # Both local and hub-support
         save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub)
@@ -83,7 +84,11 @@ class HQQWrapper:
         cls._check_arch_support(arch_key)
 
         model = cls._get_hqq_class(arch_key).from_quantized(
-            save_dir, compute_dtype=compute_dtype, device=device, cache_dir=cache_dir
+            save_dir,
+            compute_dtype=compute_dtype,
+            device=device,
+            cache_dir=cache_dir,
+            adapter=adapter,
         )
 
         cls._make_quantizable(model, quantized=True)

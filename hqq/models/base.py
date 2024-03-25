@@ -12,6 +12,7 @@ from abc import abstractmethod
 
 from huggingface_hub import snapshot_download
 from ..core.quantize import HQQLinear
+from ..core.peft import PeftUtils
 
 # Defined what is qualified as "linear layer"
 _QUANT_LAYERS = [nn.Linear]
@@ -305,6 +306,7 @@ class BaseHQQModel:
         compute_dtype: torch.dtype = float16,
         device="cuda",
         cache_dir: str = "",
+        adapter: str = None,
     ):
         # Get directory path
         save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)
@@ -368,6 +370,14 @@ class BaseHQQModel:
 
         # Set base class
         model.base_class = cls
+
+        # Add adapter
+        if adapter is not None:
+            try:
+                PeftUtils.load_lora_weights(model, filename=pjoin(save_dir, adapter))
+                PeftUtils.cast_lora_weights(model, dtype=compute_dtype)
+            except Exception as e:
+                print("Skipping adapter loading...", str(e))
 
         # Sync
         torch.cuda.synchronize()
