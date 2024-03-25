@@ -408,7 +408,9 @@ torch::Tensor unpack_3bit_32(torch::Tensor &Wq_packed)
 	int w = Wq_packed.size(1);
 	int n = h*w; //num rows as a packed tensor
 
-	auto Wq_unpacked = torch::empty({h*r, w}, Wq_packed.options()); 
+	auto dev   = Wq_packed.device();
+	auto dtype = torch::kByte;
+	auto Wq_unpacked = torch::empty({r*h, w}, torch::TensorOptions().dtype(dtype).device(dev)); 
 
 	int blocks = cdiv(n, BLOCK_SIZE);
 	unpack_3bit_32_kernel<<<blocks, BLOCK_SIZE>>>(Wq_packed.data_ptr<int32_t>(), Wq_unpacked.data_ptr<unsigned char>(), n);	
