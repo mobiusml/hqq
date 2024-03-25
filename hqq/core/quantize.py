@@ -162,7 +162,7 @@ class Quantizer:
         if meta["packing"]:
             if meta["view_as_float"]:
                 W_q = W_q.view(meta["unpack_view_dtype"])
-            W_r = Quantizer.unpack[meta["packing"]](W_q).to(compute_dtype)
+            W_r = Quantizer.unpack[meta["packing"]](W_q, dtype=compute_dtype)
             if (meta["group_size"] is not None) and (meta["nbits"] == 3):
                 W_r = (
                     W_r[: meta["group_size"]]
@@ -280,7 +280,7 @@ class HQQMatmulNoCacheDeq(torch.autograd.Function):
 
         # weight grad for frozen quantized weights not defined
         # if ctx.needs_input_grad[1]:
-        # 	grad_weight = torch.matmul(grad_output.t(), x)
+        #   grad_weight = torch.matmul(grad_output.t(), x)
 
         if bias is not None and ctx.needs_input_grad[2]:
             grad_bias = grad_output.sum(0)
@@ -313,7 +313,7 @@ class HQQMatmulNoCacheMul(torch.autograd.Function):
 
         # weight grad for frozen quantized weights not defined
         # if ctx.needs_input_grad[1]:
-        # 	grad_weight = torch.matmul(grad_output.t(), x)
+        #   grad_weight = torch.matmul(grad_output.t(), x)
 
         if bias is not None and ctx.needs_input_grad[2]:
             grad_bias = grad_output.sum(0)
