@@ -312,6 +312,9 @@ class BaseHQQModel:
         # Load model from config
         model = cls.create_model(save_dir)
 
+        # Track save directory
+        model.save_dir = save_dir
+
         # Name the layers
         cls.autoname_modules(model)
 
