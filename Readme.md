@@ -1,5 +1,7 @@
 ## Half-Quadratic Quantization (HQQ)
-This folder contains the code to perform Half-Quadratic Quantization (<b>HQQ</b>) presented in our article: https://mobiusml.github.io/hqq_blog/ 
+This folder contains the code to perform Half-Quadratic Quantization (<b>HQQ</b>) presented in our articles: 
+* HQQ: https://mobiusml.github.io/hqq_blog/
+* HQQ+: https://mobiusml.github.io/1bit_blog/
 
 ### WHat is HQQ?
 <b>HQQ</b> is a fast and accurate model quantizer that skips the need for calibration data. It's super simple to implement (just a few lines of code for the optimizer). It can crunch through quantizing the Llama2-70B model in only 4 minutes! 🚀
