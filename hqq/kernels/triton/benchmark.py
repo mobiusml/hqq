@@ -1,9 +1,19 @@
 import torch
-from torch import uint8, int32, Tensor
+from torch import uint8, float16, Tensor
 import numpy as np
+
+try:
+	from hqq.kernels.triton.dequant import *
+except:
+	pass
 
 compute_dtype = torch.float16
 device        = 'cuda'
+
+def torch_dequantize_4bit_u8_cat(W_q: Tensor, zeros:Tensor, scales:Tensor, dtype=float16) -> Tensor:  # uint8/2 > uint8
+    W_r = torch.cat([(W_q & 0b11110000) >> 4, W_q & 0b00001111], axis=0) 
+    W_r = (W_r - zeros)*scales
+    return W_r
 
 def torch_dequantize_4bit_u8(W_q: Tensor, zeros:Tensor, scales:Tensor, dtype=float16) -> Tensor:  # uint8/2 > uint8
     _step = W_q.shape[0]
@@ -74,11 +84,16 @@ def eval(fct_torch, fct_compile, fct_triton, input_shape, meta_shape, step, comp
 
 	return {k: np.round(out[k], precision) for k in out}
 
-# ##################################################################################################################
-fct_torch   = torch_dequantize_4bit_u8
-fct_compile = torch.compile(torch_dequantize_4bit_u8)
+##################################################################################################################
+fct_torch   = torch_dequantize_4bit_u8_cat
+fct_compile = torch.compile(torch_dequantize_4bit_u8_cat)
 fct_triton  = dequantize_4bit_u8
 step        = 2
+
+# fct_torch   = torch_dequantize_4bit_u8
+# fct_compile = torch.compile(torch_dequantize_4bit_u8)
+# fct_triton  = dequantize_4bit_u8
+# step        = 2
 
 
 # fct_torch   = torch_dequantize_4bit_u8_interleaved
@@ -119,7 +134,22 @@ for shape in _SHAPES:
 				print(key, record[key])
 
 
-#######################################################################
+##############################################################################################################################################
+# #4090 - cat (axis=1, group_sizes: [-1, 128])
+# W_r.shape_[2048, 2048]_meta.shape_[2048, 1] {'time_torch': 7.5e-05, 'time_compile': 0.000165, 'time_triton': 0.000128, 'speedup_vs_torch': 0.588466, 'speedup_vs_compile': 1.286206}
+# W_r.shape_[2048, 2048]_meta.shape_[32768, 1] {'time_torch': 7.5e-05, 'time_compile': 0.000165, 'time_triton': 0.000124, 'speedup_vs_torch': 0.600181, 'speedup_vs_compile': 1.329857}
+# W_r.shape_[4096, 4096]_meta.shape_[4096, 1] {'time_torch': 0.000158, 'time_compile': 0.00018, 'time_triton': 0.000125, 'speedup_vs_torch': 1.262339, 'speedup_vs_compile': 1.438768}
+# W_r.shape_[4096, 4096]_meta.shape_[131072, 1] {'time_torch': 0.000149, 'time_compile': 0.000173, 'time_triton': 0.000141, 'speedup_vs_torch': 1.055983, 'speedup_vs_compile': 1.233233}
+# W_r.shape_[4096, 11008]_meta.shape_[4096, 1] {'time_torch': 0.000566, 'time_compile': 0.000407, 'time_triton': 0.000244, 'speedup_vs_torch': 2.31357, 'speedup_vs_compile': 1.665378}
+# W_r.shape_[4096, 11008]_meta.shape_[352256, 1] {'time_torch': 0.000567, 'time_compile': 0.000398, 'time_triton': 0.000253, 'speedup_vs_torch': 2.239489, 'speedup_vs_compile': 1.570403}
+# W_r.shape_[11008, 4096]_meta.shape_[11008, 1] {'time_torch': 0.000575, 'time_compile': 0.000413, 'time_triton': 0.000239, 'speedup_vs_torch': 2.40242, 'speedup_vs_compile': 1.727646}
+# W_r.shape_[11008, 4096]_meta.shape_[352256, 1] {'time_torch': 0.000567, 'time_compile': 0.000399, 'time_triton': 0.000253, 'speedup_vs_torch': 2.244949, 'speedup_vs_compile': 1.580323}
+# W_r.shape_[8192, 8192]_meta.shape_[8192, 1] {'time_torch': 0.000944, 'time_compile': 0.000639, 'time_triton': 0.000296, 'speedup_vs_torch': 3.184381, 'speedup_vs_compile': 2.155654}
+# W_r.shape_[8192, 8192]_meta.shape_[524288, 1] {'time_torch': 0.000945, 'time_compile': 0.000621, 'time_triton': 0.000323, 'speedup_vs_torch': 2.926559, 'speedup_vs_compile': 1.923009}
+# W_r.shape_[16384, 16384]_meta.shape_[16384, 1] {'time_torch': 0.003903, 'time_compile': 0.002255, 'time_triton': 0.000877, 'speedup_vs_torch': 4.450631, 'speedup_vs_compile': 2.571125}
+# W_r.shape_[16384, 16384]_meta.shape_[2097152, 1] {'time_torch': 0.00394, 'time_compile': 0.002251, 'time_triton': 0.000938, 'speedup_vs_torch': 4.198953, 'speedup_vs_compile': 2.399101}
+
+
 #4090 - interleaved (axis=1, group_sizes: [-1, 128])
 # W_r.shape_[2048, 2048]_meta.shape_[2048, 1] {'time_torch': 9.6e-05, 'time_compile': 9.3e-05, 'time_triton': 0.000121, 'speedup_vs_torch': 0.795039, 'speedup_vs_compile': 0.768918}
 # W_r.shape_[2048, 2048]_meta.shape_[32768, 1] {'time_torch': 9.6e-05, 'time_compile': 0.000104, 'time_triton': 0.000137, 'speedup_vs_torch': 0.701944, 'speedup_vs_compile': 0.75407}
