@@ -37,6 +37,23 @@ class BitPack:
 
         return tmp
 
+    @staticmethod
+    def pack_4bit_u8_interleaved(W_q: Tensor) -> Tensor:  # uint8 > uint8/2
+        W_q = W_q.to(uint8)
+        _step = int(len(W_q) / 2)
+
+        return (W_q[::2, ...] << 4) | W_q[1::2, ...]
+
+    @staticmethod
+    def unpack_4bit_u8_interleaved(W_q: Tensor, dtype=uint8) -> Tensor:  # uint8/2 > uint8
+        _step = W_q.shape[0]
+        tmp = torch.empty([2 * _step, W_q.shape[1]], dtype=dtype, device=W_q.device)
+
+        tmp[::2, ...]  = (W_q & 0xF0) >> 4
+        tmp[1::2, ...] = (W_q & 0x0F)
+
+        return tmp
+
     # 2-bit
     ################################################
     @staticmethod
