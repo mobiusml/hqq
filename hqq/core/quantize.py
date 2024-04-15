@@ -408,7 +408,7 @@ class HQQLinear(nn.Module):
         torch.cuda.empty_cache()
 
     def extra_repr(self) -> str:
-        in_features, out_features = self.W_q.t().shape if self.W_q else ("uninitialized", "uninitialized")
+        in_features, out_features = self.W_q.t().shape if self.W_q is not None else ("uninitialized", "uninitialized")
         return f'in_features={in_features}, out_features={out_features}, bias={self.bias is not None}'
 
     # Set backends
