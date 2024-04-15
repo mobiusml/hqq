@@ -512,8 +512,12 @@ class HQQLinear(nn.Module):
         # TODO: later
         return self
 
-    def state_dict(self, *args, **kwargs):
-        return {"W_q": self.W_q, "meta": self.meta, "bias": self.bias}
+    def state_dict(self, *args, **kwargs):  # nn.Module override compatible
+        state = {"W_q": self.W_q, "meta": self.meta, "bias": self.bias}
+        if "destination" in kwargs and "prefix" in kwargs:
+            for key, value in state.items():
+                kwargs["destination"][kwargs["prefix"] + key] = value
+        return state
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
         W_q_key = prefix + "W_q"
