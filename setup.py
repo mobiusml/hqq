@@ -1,3 +1,6 @@
+# Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
+#####################################################
+
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 from setuptools.command.develop import develop
@@ -40,7 +43,7 @@ class EgginfoCommand(egg_info):
 
 setup(
     name="hqq",
-    version="0.1.6.post2",
+    version="0.1.7",
     description="Half-Quadratic Quantization (HQQ)",
     url="https://github.com/mobiusml/hqq/",
     author="Dr. Hicham Badri",
@@ -59,10 +62,11 @@ setup(
     install_requires=[
         "numpy>=1.24.4",
         "tqdm>=4.64.1",
-        "huggingface_hub",
+        "einops",
         "accelerate",
-        "timm",
         "transformers>=4.36.1",
+        "huggingface_hub",
         "termcolor",
+        #"timm",
     ],
 )
