@@ -109,7 +109,7 @@ class Quantizer:
 
         # Fine-tune weights
         if optimize:
-            scale, zero = Quantizer.optimize_weights(
+            W_q, scale, zero = Quantizer.optimize_weights(
                 tensor=W,
                 scale=scale,
                 zero=zero,
@@ -117,13 +117,8 @@ class Quantizer:
                 axis=axis,
                 device=device,
             )
-
-        # Quantize
-        scale, zero = (
-            scale.clone(),
-            zero.clone(),
-        )  # Necessary for fake quantization backprop
-        W_q = torch.round(W * scale + zero).clamp(min_max[0], min_max[1])
+        else:
+            W_q = torch.round(W * scale + zero).clamp(min_max[0], min_max[1])
 
         # Store meta-data (we invert the scale for dequantization)
         meta = {
