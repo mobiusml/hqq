@@ -7,6 +7,26 @@ from ..core.quantize import Quantizer
 def patch_linearlayers(model, fct, patch_param=None):
     model.base_class.patch_linearlayers(model, fct, dict([(k, patch_param) for k in model.base_class.get_linear_tags()]))
 
+
+#add dummy weights to a layer
+def patch_add_weight_param(layer, patch_param):    
+    if(hasattr(layer, 'weight') is False):
+        layer.weight = torch.nn.Parameter(torch.zeros((1,), device=layer.device, dtype=layer.compute_dtype).contiguous(), requires_grad=False)
+    return layer
+
+
+#Makes HQQ inference compatible torch.compile fullgraph=True
+def patch_hqq_simplify(layer, patch_param):
+    def forward_hqq_simplified(self, x):
+        out = torch.matmul(x, self.dequantize().T)
+        if(self.bias is not None):
+            out += self.bias 
+        return out 
+
+    if(type(layer) is HQQLinear):
+        layer.forward = lambda x: forward_hqq_simplified(layer, x)
+    return layer
+
 def get_lowrank_tuple_torch_gpu(tensor, max_rank, eps=None):
     t       = tensor.t().float()
     u, s, v = torch.linalg.svd(t)
@@ -52,7 +72,6 @@ def patch_merge_zeros_with_lora(layer, patch_params={'z_shift':8, 'keep_lora':Fa
 
     torch.cuda.empty_cache()
 
-    @torch.compile()
     def forward_linear_updated(self, x: Tensor) -> Tensor:
 
         compute_dtype = self.linear_layer.compute_dtype
@@ -66,7 +85,6 @@ def patch_merge_zeros_with_lora(layer, patch_params={'z_shift':8, 'keep_lora':Fa
         return out
 
     layer.linear_layer.forward = lambda x: forward_linear_updated(layer, x)
-
 
     def forward_updated(self, x: Tensor) -> Tensor:
         out  = self.linear_layer.forward(x)
