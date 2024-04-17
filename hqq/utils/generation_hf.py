@@ -7,18 +7,8 @@
 import torch
 from transformers import StaticCache
 from tqdm import tqdm
+from .patching import patch_linearlayers, patch_add_weight_param, patch_hqq_simplify
 
-def patch_linearlayers(model, fct, patch_param=None):
-    model.base_class.patch_linearlayers(model, fct, {lin_tag:patch_param for lin_tag in model.base_class.get_linear_tags()})
-
-#Necessary for static cache with sdpa
-def patch_add_weight_param(layer, patch_param):    
-    if(hasattr(layer, 'weight') is False):
-        layer.weight = torch.nn.Parameter(torch.zeros((1,), device=layer.device, dtype=layer.compute_dtype).contiguous(), requires_grad=False)
-    return layer
-
-def add_weight_param(model):
-    patch_linearlayers(model, patch_add_weight_param)
 
 class HFGenerator:
     def __init__(self, model, tokenizer, do_sample: bool=False, temperature: float=0.6, top_k: int=5, compile_args: dict | None = {"mode":"reduce-overhead", "fullgraph":True}):
@@ -41,7 +31,8 @@ class HFGenerator:
             self.decode_one_token = torch.compile(self.decode_one_token, **compile_args)
 
         try:
-            add_weight_param(self.model)
+            patch_linearlayers(model, patch_hqq_simplify) #makes HQQLinear compatible with fullgraph=True
+            patch_linearlayers(model, patch_add_weight_param) #add dummy weights
         except Exception:
             pass
 
