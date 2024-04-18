@@ -191,7 +191,7 @@ class BaseHQQModel:
 
     # Load weights from disk
     @classmethod
-    def load_weights(cls, save_dir: str, map_location=None):
+    def load_weights(cls, save_dir: str):
         print("CPU runtime is not supported. Will attempt to load the weights in the GPU.")
         return torch.load(cls.get_weight_file(save_dir))
 
