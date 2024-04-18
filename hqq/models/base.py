@@ -191,7 +191,7 @@ class BaseHQQModel:
 
     # Load weights from disk
     @classmethod
-    def load_weights(cls, save_dir: str, map_location: bool = None):
+    def load_weights(cls, save_dir: str, map_location: str = None):
         return torch.load(cls.get_weight_file(save_dir), map_location=map_location)
 
     # Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
@@ -325,7 +325,7 @@ class BaseHQQModel:
 
         # Load weights
         try:
-            weights = cls.load_weights(save_dir)
+            weights = cls.load_weights(save_dir, map_location=device)
         except Exception:
             print("Failed to load the weights")
             raise FileNotFoundError
