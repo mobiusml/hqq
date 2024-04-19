@@ -30,16 +30,15 @@ model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, dev
 
 #Set default backends, to compare with int4mm
 if(quant_config['weight_quant_params']['axis']==0):
-	HQQLinear.set_backend(HQQBackend.ATEN)
+    HQQLinear.set_backend(HQQBackend.ATEN)
 else:
-	HQQLinear.set_backend(HQQBackend.PYTORCH)
+    HQQLinear.set_backend(HQQBackend.PYTORCH)
 
 ##########################################################################################################################################################
 
 #Replace HQQLinear layers matmuls to support int4 mm
-from hqq.backends.torchao import replace_with_torchInt4
-if(quant_config['weight_quant_params']['axis']==1):
-	replace_with_torchInt4(model)
+from hqq.utils.patching import prepare_for_inference
+prepare_for_inference(model, use_aoint4=True)
 
 #Import custom HF generator
 from hqq.utils.generation_hf import HFGenerator
