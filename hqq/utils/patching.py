@@ -6,8 +6,8 @@ from ..core.quantize import Quantizer, HQQLinear
 from ..core.utils import cleanup
 from ..core.peft import HQQLinearLoRA
 
-from ..backends.torchao import patch_hqq_to_marlin
-from ..backends.marlin import patch_hqq_to_aoint4
+from ..backends.torchao import patch_hqq_to_aoint4
+from ..backends.marlin import patch_hqq_to_marlin
 
 def patch_linearlayers(model, fct, patch_param=None, verbse=False):
     model.base_class.patch_linearlayers(model, fct, dict([(k, patch_param) for k in model.base_class.get_linear_tags()]), verbose=verbse)
