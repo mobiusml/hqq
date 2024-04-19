@@ -7,17 +7,14 @@
 import torch
 from transformers import StaticCache
 from tqdm import tqdm
-from .patching import patch_linearlayers, patch_add_weight_param, patch_hqq_simplify
-
 
 class HFGenerator:
     def __init__(self, model, tokenizer, do_sample: bool=False, temperature: float=0.6, top_k: int=5, compile_args: dict | None = {"mode":"reduce-overhead", "fullgraph":True}):
         super().__init__()
 
-        self.model     = model 
-        self.tokenizer = tokenizer
-        self.device    = model.device
-
+        self.model       = model 
+        self.tokenizer   = tokenizer
+        self.device      = model.device
         self.do_sample   = do_sample
         self.temperature = temperature
         self.top_k       = top_k
@@ -29,12 +26,6 @@ class HFGenerator:
 
         if(compile_args is not None):
             self.decode_one_token = torch.compile(self.decode_one_token, **compile_args)
-
-        try:
-            patch_linearlayers(model, patch_hqq_simplify) #makes HQQLinear compatible with fullgraph=True
-            patch_linearlayers(model, patch_add_weight_param) #add dummy weights
-        except Exception:
-            pass
 
         self.init()
 
@@ -144,6 +135,7 @@ class HFGenerator:
         return {"output_text":output_text, "output_tokens":output_tokens, "input_tokens":input_tokens}
 
     def generate(self, prompt, max_new_tokens=1000, use_chat_template=True, verbose=True, print_tokens=False):
+        self.tokenizer.add_bos_token = True if(use_chat_template) else False
         if(use_chat_template):
             prompt = self.tokenizer.apply_chat_template([{"role": "user",  "content":prompt},], tokenize=False)
         self.setup(prompt, max_new_tokens)

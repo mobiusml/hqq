@@ -1,11 +1,14 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
 #####################################################
 import torch 
-import marlin
+try:
+    import marlin
+except Exception:
+    marlin = None
 from ..core.quantize import Quantizer
 
 class MarlinLinear(torch.nn.Module):
-    def __init__(self, W: torch.Tensor, scales: torch.Tensor, bias=None, groupsize=-1):
+    def __init__(self, W: torch.Tensor, scales: torch.Tensor, u=None, bias=None, groupsize=-1):
         super().__init__()
 
         m, n   = W.shape
@@ -23,7 +26,6 @@ class MarlinLinear(torch.nn.Module):
         _layer.s = torch.empty((m // effective_groupsize, n), dtype=torch.half, device=device)
         _layer.pack(_linear, scales.t())
 
-
         self.bias          = bias.half() if (bias is not None) else None
         self.Wq_packed     = _layer.B.clone()
         self.scales        = _layer.s.clone()
@@ -34,38 +36,55 @@ class MarlinLinear(torch.nn.Module):
         self.axis          = 1
         self.device        = device 
         self.compute_dtype = torch.float16
+        self.u             = torch.nn.Parameter(u, requires_grad=False) if (u is not None) else None
 
         del _linear, _layer
         torch.cuda.empty_cache()
 
-    @torch.jit.ignore
+    @torch.no_grad()
     def matmul(self, x):
         out = torch.empty(x.shape[:-1] + (self.scales.shape[1],), dtype=x.dtype, device=x.device)
         marlin.mul(x.view((-1, x.shape[-1])), self.Wq_packed, out.view((-1, out.shape[-1])), self.scales, self.workspace_fp)
         return out
 
+    @torch.jit.ignore
     def forward(self, x):
         out = self.matmul(x)
+
+        if(self.u is not None):
+            out += torch.matmul(x.sum(axis=-1, keepdim=True), self.u)
+
         if(self.bias is not None):
             out += self.bias
+
         return out
 
 #ONLY WORKS WITH AXIS=1, group_size= - 1
-def patch_hqq_to_marlin(layer, patch_params=None):
+def patch_hqq_to_marlin(layer, patch_params):
+    if(marlin is None):
+        return layer
+
     z_shift   = 8.
     hqq_layer = layer.linear_layer if hasattr(layer, 'linear_layer') else layer
 
-    W_r       = Quantizer.unpack[hqq_layer.meta['packing']](hqq_layer.W_q, dtype=hqq_layer.compute_dtype).t()
-    scales    = hqq_layer.meta['scale'].t()
-    W_r       = (W_r - z_shift) * scales
+    #Check config suppport
+    w_q_config = hqq_layer.quant_config['weight_quant_params']
+    if((w_q_config['axis']==0) or (w_q_config['group_size'] is not None) or (w_q_config['nbits']!=4)):
+        return layer
 
-    #forward equivalent to: torch.matmul(x, (W_r - z_shift) * scales)
 
-    #TODO: ADD rank-1 matmul for -zeros*scales
+    W_r  = Quantizer.unpack[hqq_layer.meta['packing']](hqq_layer.W_q, dtype=hqq_layer.compute_dtype).t()
+    z    = hqq_layer.meta['zero']
+    s    = hqq_layer.meta['scale'].t()
+    W_r  = (W_r - z_shift) * s
 
-    marlin_layer = MarlinLinear(W_r, scales, bias=hqq_layer.bias)
+    if(type(z) in [torch.Tensor, torch.nn.Parameter]):
+        z  = z.t()
+        u  = (s*(-z + z_shift)).view([1, -1])
+    else:
+        u = None
 
-    del W_r, scales
+    marlin_layer = MarlinLinear(W_r, s, u=u, bias=hqq_layer.bias)
 
     if hasattr(layer, 'linear_layer'):
         del layer.linear_layer

@@ -11,6 +11,7 @@ from torch import bfloat16, nn, Tensor
 import torch.nn.functional as F
 
 from ..core.quantize import HQQLinear, Quantizer
+from ..core.peft import HQQLinearLoRA
 from ..core.utils import cleanup
 
 class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
@@ -228,46 +229,79 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
 def patch_linearlayers(model, fct, patch_param=None):
     model.base_class.patch_linearlayers(model, fct, {lin_tag:patch_param for lin_tag in model.base_class.get_linear_tags()})
 
-def patch_HQQLinear_to_HQQLinearTorchWeightOnlynt4(layer, patch_params):
+def patch_hqq_to_aoint4(layer, patch_params):
 
-    new_layer = layer
+    hqq_layer = None
+    if(type(layer) is HQQLinear):
+        hqq_layer = layer 
+    if(type(layer) is HQQLinearLoRA):
+        hqq_layer = layer.linear_layer
+
+    if(hqq_layer is None): 
+        return layer
+
+    w_q_config = hqq_layer.quant_config['weight_quant_params']
+    if(w_q_config['nbits']!=4 or w_q_config['axis']==0):
+        return layer
+
+    hqq_aoint4_layer  = HQQLinearTorchWeightOnlynt4(None, quant_config=hqq_layer.quant_config, compute_dtype=hqq_layer.compute_dtype, device=hqq_layer.device, del_orig=False, initialize=False, padding=False)
+    hqq_aoint4_layer.initialize_with_hqq_quants(hqq_layer.W_q, hqq_layer.meta, hqq_layer.bias)
+
+    del hqq_layer
+    torch.cuda.empty_cache()
 
     if(type(layer) is HQQLinear):
-        if(layer.quant_config['weight_quant_params']['nbits']!=4):
-    	    return layer
-        new_layer  = HQQLinearTorchWeightOnlynt4(None, quant_config=layer.quant_config, compute_dtype=layer.compute_dtype, device=layer.device, del_orig=False, initialize=False, padding=False)
-        new_layer.initialize_with_hqq_quants(layer.W_q, layer.meta, layer.bias)
+        return hqq_aoint4_layer
 
-    return new_layer
+    if(type(layer) is HQQLinearLoRA):
+        layer.linear_layer = hqq_aoint4_layer
+
+    return layer
+
+
 
 def replace_with_torchInt4(model):
-    patch_linearlayers(model, patch_HQQLinear_to_HQQLinearTorchWeightOnlynt4)
+    patch_linearlayers(model, patch_hqq_to_aoint4)
     cleanup()
 
 
 #Force requantize, mainly to check if the padding with int4mm is faster
-def patch_HQQLinear_to_HQQLinearTorchWeightOnlynt4_force_requantize(layer, patch_params):
+def patch_hqq_to_aoint4_force_requantize(layer, patch_params):
 
-    new_layer = layer
+    hqq_layer = None
+    if(type(layer) is HQQLinear):
+        hqq_layer = layer 
+    if(type(layer) is HQQLinearLoRA):
+        hqq_layer = layer.linear_layer
+
+    if(hqq_layer is None): 
+        return layer
+
+    w_q_config = hqq_layer.quant_config['weight_quant_params']
+    if(w_q_config['nbits']!=4 or w_q_config['axis']==0):
+        return layer
+
+    #Create dummy linear layer to store dequantize weights
+    dummy_linear = torch.nn.Linear(1, 1, bias=False)
+    dummy_linear.weight.data = hqq_layer.dequantize()
+
+    #Disable optimizer on already dequantized weights
+    quant_config = hqq_layer.quant_config
+    quant_config['weight_quant_params']['optimize'] = False
+
+    hqq_aoint4_layer = HQQLinearTorchWeightOnlynt4(dummy_linear, quant_config=quant_config, compute_dtype=hqq_layer.compute_dtype, device=hqq_layer.device, del_orig=True, initialize=True, padding=True)
+
+    del hqq_layer
+    torch.cuda.empty_cache()
 
     if(type(layer) is HQQLinear):
-        if(layer.quant_config['weight_quant_params']['nbits']!=4):
-            return layer
-        #Create dummy linear layer to store dequantize weights
-        dummy_linear = torch.nn.Linear(1, 1, bias=False)
-        dummy_linear.weight.data = layer.dequantize()
-
-        #Disable optimizer on already dequantized weights
-        quant_config = layer.quant_config
-        quant_config['weight_quant_params']['optimize'] = False
-
-        new_layer = HQQLinearTorchWeightOnlynt4(dummy_linear, quant_config=quant_config, compute_dtype=layer.compute_dtype, device=layer.device, del_orig=True, initialize=True, padding=True)
+        return hqq_aoint4_layer
         
-        del layer 
-        cleanup()
+    if(type(layer) is HQQLinearLoRA):
+        layer.linear_layer = hqq_aoint4_layer
 
-    return new_layer
+    return layer
 
 def replace_with_torchInt4_force_requantize(model):
-    patch_linearlayers(model, patch_HQQLinear_to_HQQLinearTorchWeightOnlynt4_force_requantize)
+    patch_linearlayers(model, patch_hqq_to_aoint4_force_requantize)
     cleanup()
