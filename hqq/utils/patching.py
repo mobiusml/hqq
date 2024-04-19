@@ -12,6 +12,13 @@ from ..backends.marlin import patch_hqq_to_marlin
 def patch_linearlayers(model, fct, patch_param=None, verbse=False):
     model.base_class.patch_linearlayers(model, fct, dict([(k, patch_param) for k in model.base_class.get_linear_tags()]), verbose=verbse)
 
+def patch_add_quant_config(layer, patch_param):
+    if(type(layer) is HQQLinear):
+        layer.quant_config = patch_param
+    if(type(layer) is HQQLinearLoRA):
+        layer.linear_layer.quant_config = patch_param
+    return layer
+
 #add dummy weights to a layer
 def patch_add_weight_param(layer, patch_param): 
     if(hasattr(layer, 'weight') is False):
