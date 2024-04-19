@@ -70,12 +70,9 @@ prepare_for_inference(model, backend="marlin", allow_merge=True) #marlin int4 ke
 ```
 These backends only work with 4-bit quantization and `axis=1`. Additionally, for <a href="pip install git+https://github.com/IST-DASLab/marlin.git">Marlin</a>, we only support `group_size=None`. Below you can find a comparison between the different backends. The torchao kernel reaches 184 tokens/sec on a 4090.
 
- <div class="row"><center>
-  <div class="column">
-    <img src="https://github.com/mobiusml/hqq/blob/master/imgs/llama_int4_4090.png" alt="backend 4090" style="width:48%">
-  </div>
- </center>
-</div> 
+<p align="center">
+    <img src="https://github.com/mobiusml/hqq/blob/master/imgs/llama_int4_4090.png" alt="backend 4090" >
+</p>
 
 ### Supported Models
 #### LLMs 
