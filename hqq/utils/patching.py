@@ -52,8 +52,8 @@ def patch_lora_inference(layer, patch_param):
     return layer
 
 
-def prepare_for_inference(model, allow_merge=True, use_marlin=False, use_aoint4=False):
-    assert use_marlin!=use_aoint4, "Only one or the other are allowed"
+def prepare_for_inference(model, allow_merge=False, use_aoint4=False, use_marlin=False):
+    assert (use_marlin==use_aoint4 and use_aoint4==False), "Only one or the other are allowed"
 
     if(use_aoint4):
         allow_merge = False
