@@ -59,25 +59,23 @@ def patch_lora_inference(layer, patch_param):
     return layer
 
 
-def prepare_for_inference(model, allow_merge=False, use_aoint4=False, use_marlin=False):
-    assert (use_marlin==use_aoint4 and use_aoint4==False), "Only one or the other are allowed"
+def prepare_for_inference(model, allow_merge=False, backend="default"):
 
-    if(use_aoint4):
+    if(backend =="torchao_int4"):
         allow_merge = False
 
     patch_linearlayers(model, patch_hqq_inference)
     patch_linearlayers(model, patch_lora_inference)
 
-    if(use_aoint4):
+    if(backend =="torchao_int4"):
         patch_linearlayers(model, patch_hqq_to_aoint4)
     if(allow_merge): #only compatible with symmetric quant kernels
         patch_linearlayers(model, patch_merge_zeros_with_lora, {'z_shift':8, 'keep_lora':False})
-    if(use_marlin):
+    if(backend =="marlin"):
         patch_linearlayers(model, patch_hqq_to_marlin, verbse=True)
 
     patch_linearlayers(model, patch_add_weight_param, {"device":model.device, "dtype":model.dtype})
     cleanup()
-
 
 def get_lowrank_tuple_torch_gpu(tensor, max_rank, eps=None):
     t       = tensor.t().float()
