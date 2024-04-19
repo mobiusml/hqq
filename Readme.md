@@ -68,7 +68,7 @@ from hqq.utils.patching import prepare_for_inference
 prepare_for_inference(model, backend="torchao_int4") #torchao's int4mm kernel, use compute_dtype=bfloat16
 prepare_for_inference(model, backend="marlin", allow_merge=True) #marlin int4 kernel.
 ```
-These backends only work with 4-bit quantization and `axis=1`. Additionally, for <a href="https://github.com/IST-DASLab/marlin.git">Marlin</a>, we only support `group_size=None`. Below you can find a comparison between the different backends. The torchao kernel reaches 184 tokens/sec on a 4090.
+These backends only work with 4-bit quantization and `axis=1`. Additionally, for <a href="https://github.com/IST-DASLab/marlin.git">Marlin</a>, we only support `group_size=None`. Below you can find a comparison between the different backends. The torchao kernel reaches 195 tokens/sec on a 4090.
 
 <p align="center">
     <img src="https://github.com/mobiusml/hqq/blob/master/imgs/llama_int4_4090.png" alt="backend 4090" >
