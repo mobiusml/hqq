@@ -1,5 +1,6 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
+import warnings
 import torch
 from torch import nn
 from torch import float16
@@ -191,9 +192,9 @@ class BaseHQQModel:
 
     # Load weights from disk
     @classmethod
-    def load_weights(cls, save_dir: str):
+    def load_weights(cls, save_dir: str, map_location = None):
         print("CPU runtime is not supported. Will attempt to load the weights in the GPU.")
-        return torch.load(cls.get_weight_file(save_dir))
+        return torch.load(cls.get_weight_file(save_dir), map_location=map_location)
 
     # Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
     @classmethod
