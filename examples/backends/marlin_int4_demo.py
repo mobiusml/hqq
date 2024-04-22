@@ -33,7 +33,7 @@ else:
 
 #Replace HQQLinear layers matmuls to support int4 mm
 from hqq.utils.patching import prepare_for_inference
-prepare_for_inference(model, use_marlin=True)
+prepare_for_inference(model, backend="marlin")
 
 #Import custom HF generator
 from hqq.utils.generation_hf import HFGenerator
