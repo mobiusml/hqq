@@ -22,8 +22,11 @@ def patch_add_quant_config(layer, patch_param):
 #add dummy weights to a layer
 def patch_add_weight_param(layer, patch_param): 
     if(hasattr(layer, 'weight') is False):
-        param  = [p for p in layer.parameters()]
-        device_ = param[0].device if(len(param)>0) else patch_param["device"]
+        if(hasattr(layer, 'device')):
+            device_ = layer.device
+        else:
+            param  = [p for p in layer.parameters()]
+            device_ = param[0].device if(len(param)>0) else patch_param["device"]
 
         fp_param = [p for p in layer.parameters() if p.is_floating_point()]
         dtype_ = fp_param[0].dtype if(len(fp_param)>0) else patch_param["dtype"]
