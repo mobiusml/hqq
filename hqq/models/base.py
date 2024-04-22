@@ -72,12 +72,13 @@ def get_linear_tags_from_model(model, ignore: list) -> list:
 def forward_device_hooked(self, *args, **kwargs):
     args = list(args)
 
+    #eddit this to make torch.compile compatible
     for i in range(len(args)):
-        if hasattr(args[i], "to"):
+        if(isinstance(args[i], (torch.Tensor, torch.nn.Parameter))):#if hasattr(args[i], "to"):
             args[i] = args[i].to(self.device)
 
     for i in kwargs:
-        if hasattr(kwargs[i], "to"):
+        if(isinstance(kwargs[i], (torch.Tensor, torch.nn.Parameter))):#if hasattr(kwargs[i], "to"):
             kwargs[i] = kwargs[i].to(self.device)
 
     # return self.__class__.forward(self, *args, **kwargs)
