@@ -19,7 +19,7 @@ class HFGenerator:
         do_sample: bool = False,
         temperature: float = 0.6,
         top_k: int = 5,
-        compile: str = "partial",
+        compile: str | None = None, #None / "partial" / "full"
     ):
         super().__init__()
 
@@ -160,7 +160,7 @@ class HFGenerator:
 
     # Setup cache and variables
     def setup(self, inputs, max_new_tokens):
-        #Temporary hack: this why results with compiled are weird. They should be fixed https://github.com/huggingface/transformers/issues/30351
+        #Temporary hack: this is why results with compiled are weird. They should be fixed https://github.com/huggingface/transformers/issues/30351
         if(self.is_compiled is False):
             self.setup_cache()
         self.inputs = inputs
