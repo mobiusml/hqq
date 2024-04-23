@@ -35,9 +35,9 @@ class HFGenerator:
         self.use_cache = False
 
         if do_sample:
-            self.decode_one_token = self.decode_one_token_sampled
+            decode_one_token = self.decode_one_token_sampled
         else:
-            self.decode_one_token = self.decode_one_token_no_sample
+            decode_one_token = self.decode_one_token_no_sample
 
         # Setup cache
         self.max_new_tokens = max_new_tokens
@@ -48,22 +48,30 @@ class HFGenerator:
 
         self.max_new_tokens = min(self.max_new_tokens, self.cache_size)
 
-        with torch.no_grad():
-            self.model._setup_cache(StaticCache, 1, max_cache_len=self.cache_size)
+        self.setup_cache()
 
+        self.is_compiled = False
         if compile == "partial":
-            self.compile_partial()
+            self.compile_partial(decode_one_token)
 
         if compile == "full":
             self.compile_full()
 
+        if(hasattr(self, 'decode_one_token') is False):
+            self.decode_one_token = decode_one_token
+
         self.init()
 
+    @torch.no_grad()
+    def setup_cache(self):
+        self.model._setup_cache(StaticCache, 1, max_cache_len=self.cache_size)
+
     # Ideally only compile this, but it creates issues with generation: https://github.com/huggingface/transformers/issues/30351
-    def compile_partial(self):
+    def compile_partial(self, decode_one_token):
         self.decode_one_token = torch.compile(
-            self.decode_one_token, **{"mode": "reduce-overhead", "fullgraph": True}
+            decode_one_token, **{"mode": "reduce-overhead", "fullgraph": True}
         )
+        self.is_compiled = True
 
     @torch.inference_mode()
     def compile_full(self):
@@ -81,6 +89,8 @@ class HFGenerator:
                     ),
                     use_cache=False,
                 ).logits
+
+        self.is_compiled = True
 
     def next_multiple(self, val):  # next power of 2
         vals = [
@@ -150,6 +160,9 @@ class HFGenerator:
 
     # Setup cache and variables
     def setup(self, inputs, max_new_tokens):
+        #Temporary hack: this why results with compiled are weird. They should be fixed https://github.com/huggingface/transformers/issues/30351
+        if(self.is_compiled is False):
+            self.setup_cache()
         self.inputs = inputs
         self.batch_size, self.seq_length = self.inputs["input_ids"].shape
         self.cache_position = torch.arange(self.seq_length, device=self.device)
