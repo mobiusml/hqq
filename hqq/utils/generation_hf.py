@@ -15,20 +15,23 @@ class HFGenerator:
         model,
         tokenizer,
         max_new_tokens: int = 1000,
+        cache_size: int | None = None,
         do_sample: bool = False,
         temperature: float = 0.6,
         top_k: int = 5,
-        compile: bool = False,
+        compile: str = "partial",
     ):
         super().__init__()
+
+        torch._dynamo.config.cache_size_limit = 32
+        torch._dynamo.config.capture_scalar_outputs = True
 
         self.model = model
         self.tokenizer = tokenizer
         self.device = model.device
         self.do_sample = do_sample
-        self.temperature = temperature
-        self.top_k = top_k
-        self.max_new_tokens = max_new_tokens
+        self.temperature = temperature if self.do_sample else None
+        self.top_k = top_k if self.do_sample else None
         self.use_cache = False
 
         if do_sample:
@@ -36,26 +39,34 @@ class HFGenerator:
         else:
             self.decode_one_token = self.decode_one_token_no_sample
 
-        with torch.no_grad():
-            self.model._setup_cache(
-                StaticCache, 1, max_cache_len=self.next_multiple(max_new_tokens)
-            )
+        # Setup cache
+        self.max_new_tokens = max_new_tokens
+        if cache_size is None:
+            self.cache_size = self.next_multiple(self.max_new_tokens)
+        else:
+            self.cache_size = cache_size
 
-        if compile:
-            self.compile()
+        self.max_new_tokens = min(self.max_new_tokens, self.cache_size)
+
+        with torch.no_grad():
+            self.model._setup_cache(StaticCache, 1, max_cache_len=self.cache_size)
+
+        if compile == "partial":
+            self.compile_partial()
+
+        if compile == "full":
+            self.compile_full()
 
         self.init()
 
-    def next_multiple(self, val, multiple=64):
-        return int(round(val / multiple) * multiple)
-
     # Ideally only compile this, but it creates issues with generation: https://github.com/huggingface/transformers/issues/30351
-    # def compile(self):
-    #     self.decode_one_token = torch.compile(self.decode_one_token, **{"mode":"reduce-overhead", "fullgraph":True})
+    def compile_partial(self):
+        self.decode_one_token = torch.compile(
+            self.decode_one_token, **{"mode": "reduce-overhead", "fullgraph": True}
+        )
 
     @torch.inference_mode()
-    def compile(self):
-        torch._dynamo.config.capture_scalar_outputs = True
+    def compile_full(self):
         self.model.forward = torch.compile(
             self.model.forward, mode="reduce-overhead", fullgraph=True
         )
@@ -70,6 +81,13 @@ class HFGenerator:
                     ),
                     use_cache=False,
                 ).logits
+
+    def next_multiple(self, val):  # next power of 2
+        vals = [
+            2**i for i in range(5, 14)
+        ]  # [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+        new_val = vals[[i for i in range(len(vals)) if (vals[i] - val) > 0][0]]
+        return new_val
 
     def init(self):
         # Setup inference mode
@@ -131,10 +149,8 @@ class HFGenerator:
         return new_token
 
     # Setup cache and variables
-    def setup(self, prompt, max_new_tokens):
-        self.inputs = self.tokenizer([prompt], return_tensors="pt", padding=True).to(
-            device=self.device
-        )
+    def setup(self, inputs, max_new_tokens):
+        self.inputs = inputs
         self.batch_size, self.seq_length = self.inputs["input_ids"].shape
         self.cache_position = torch.arange(self.seq_length, device=self.device)
         self.generated_ids = torch.zeros(
@@ -225,15 +241,42 @@ class HFGenerator:
     def generate(
         self, prompt, use_chat_template=True, verbose=True, print_tokens=False
     ):
-        self.tokenizer.add_bos_token = True if (use_chat_template) else False
+        self.setup(
+            inputs=self.tokenize_prompt(prompt, use_chat_template=use_chat_template),
+            max_new_tokens=self.max_new_tokens,
+        )
+        return self.next_token_iterator(
+            self.prefill(), self.max_new_tokens, verbose, print_tokens
+        )
+
+    def generate_(
+        self, prompt, use_chat_template=True, verbose=False, print_tokens=False
+    ):
+        gen_out = self.model.generate(
+            **self.tokenize_prompt(prompt, use_chat_template=use_chat_template),
+            do_sample=self.do_sample,
+            cache_implementation="static",
+            max_new_tokens=self.max_new_tokens,
+            pad_token_id=self.tokenizer.pad_token_id,
+            temperature=self.temperature,
+            top_p=self.top_k,
+            use_cache=False,
+        )[0]
+
+        return {"output_text": self.tokenizer.decode(gen_out), "output_tokens": gen_out}
+
+    def tokenize_prompt(self, prompt, use_chat_template=True):
         if use_chat_template:
+            self.tokenizer.add_bos_token = True
             prompt = self.tokenizer.apply_chat_template(
                 [
                     {"role": "user", "content": prompt},
                 ],
                 tokenize=False,
             )
-        self.setup(prompt, self.max_new_tokens)
-        return self.next_token_iterator(
-            self.prefill(), self.max_new_tokens, verbose, print_tokens
+
+        self.tokenizer.add_bos_token = False
+
+        return self.tokenizer([prompt], return_tensors="pt", padding=True).to(
+            device=self.model.device
         )

@@ -39,7 +39,8 @@ prepare_for_inference(model, backend="marlin")
 from hqq.utils.generation_hf import HFGenerator
 
 #Generate
-gen = HFGenerator(model, tokenizer, do_sample=True, compile_args=None) #skips compilation: slower, but works properly
-#gen = HFGenerator(model, tokenizer, do_sample=True) #compiled: much faster, but there's a bug with HF's StaticCache 
+gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile="partial") 
 
-out = gen.generate("Write an essay about large language models.", max_new_tokens=1000, print_tokens=True)
+out = gen.generate("Write an essay about large language models.", print_tokens=True)
+out = gen.generate("Tell me a funny joke!", print_tokens=True)
+out = gen.generate("How to make a yummy chocolate cake?", print_tokens=True)
