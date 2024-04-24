@@ -2,8 +2,12 @@
 #####################################################
 
 #Makes HQQ 4-bit (axis=1) compatbile with torch.ops.aten._weight_int4pack_mm
+
+#The code is partially based on: https://github.com/pytorch-labs/gpt-fast/blob/main/quantize.py (BSD-3-Clause license)
+#Only the packing logic is copied, the rest is rewritten to support HQQ's logic
+
 #Only works with: bfloat16, axis=1. 
-#Only tested on Ada gpus
+#Only tested on Ada gpus.
 
 import torch
 import copy
