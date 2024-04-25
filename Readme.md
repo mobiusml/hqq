@@ -51,6 +51,7 @@ HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)  #Compiled Pytorch via dynamo
 HQQLinear.set_backend(HQQBackend.ATEN)             #C++ Aten/CUDA backend (set automatically by default if available)
 ```
 The ```HQQBackend.ATEN``` backend is automatically installed and used by default when available.
+Note that ```HQQBackend.ATEN```  only supports `axis=0`. For `axis=1` you need to use ```HQQBackend.PYTORCH``` or ```HQQBackend.PYTORCH_COMPILE```.
 
 Below you can find the speed-up benchmark with various backends, ```HQQBackend.PYTORCH``` being the baseline:
 
@@ -61,6 +62,18 @@ Below you can find the speed-up benchmark with various backends, ```HQQBackend.P
   </div>
  </center>
 </div> 
+
+Additionally, we support external backends for faster inference with fused kernels. You can use these backends after the model was quantized as follows:
+```Python
+from hqq.utils.patching import prepare_for_inference
+prepare_for_inference(model, backend="torchao_int4") #torchao's int4mm kernel, use compute_dtype=bfloat16
+prepare_for_inference(model, backend="marlin", allow_merge=True) #marlin int4 kernel.
+```
+These backends only work with 4-bit quantization and `axis=1`. Additionally, for <a href="https://github.com/IST-DASLab/marlin.git">Marlin</a>, we only support `group_size=None`. Below you can find a comparison between the different backends. The torchao kernel reaches 195 tokens/sec on a 4090.
+
+<p align="center">
+    <img src="https://github.com/mobiusml/hqq/blob/master/imgs/llama_int4_4090.png" alt="backend 4090" >
+</p>
 
 ### Supported Models
 #### LLMs 
@@ -106,7 +119,7 @@ model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, dev
 You can save/load a quantized model as follows:
 ```Python
 #Save the quantized model
-model.save_quantized(model, save_dir=save_dir)
+model.save_quantized(save_dir=save_dir)
 
 #Load from local directory or Hugging Face Hub on a specific device
 model = HQQModelForCausalLM.from_quantized(save_dir_or_hfhub, device='cuda')
@@ -193,7 +206,7 @@ print(llm("Who is Elon Musk?"))
 You can save/load a quantized model as follows:
 ```Python
 #Save the quantized model
-model.save_quantized(model, save_dir=save_dir)
+model.save_quantized(save_dir=save_dir)
 
 #Load from local directory or Hugging Face Hub
 model = HQQLLM.from_quantized(save_dir_or_hfhub)
@@ -226,7 +239,7 @@ model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16)
 You can save/load the quantized models as follows:
 ```Python
 #Save the quantized model
-model.save_quantized(model, save_dir=save_dir)
+model.save_quantized(save_dir=save_dir)
 
 #Load from local directory or Hugging Face Hub
 model = HQQtimm.from_quantized(save_dir_or_hfhub)

@@ -1,7 +1,6 @@
 # pip install git+https://github.com/mobiusml/hqq.git;
+# pip install git+https://github.com/IST-DASLab/marlin.git;
 # num_threads=12; OMP_NUM_THREADS=$num_threads CUDA_VISIBLE_DEVICES=0 ipython3 
-
-# Tested on 4090: up to 154 tokens/sec with default compile_args
 ##########################################################################################################################################################
 import torch, os
 
@@ -11,7 +10,7 @@ torch.backends.cudnn.allow_tf32       = True
 
 cache_path     = '.'
 model_id       = "meta-llama/Llama-2-7b-chat-hf"
-compute_dtype  = torch.bfloat16 #int4 kernel only works with bfloat16
+compute_dtype  = torch.float16 #int4 kernel only works with float16
 device         = 'cuda:0'
 
 ##########################################################################################################################################################
@@ -20,11 +19,7 @@ from hqq.core.quantize import *
 
 tokenizer    = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_path)
 model        = HQQModelForCausalLM.from_pretrained(model_id, cache_dir=cache_path, torch_dtype=compute_dtype, attn_implementation="sdpa")
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1)
-
-#A bit better quantization results but slower
-#from hqq.core.optimize import *
-#Quantizer.optimize_weights = optimize_weights_proximal_slow
+quant_config = BaseQuantizeConfig(nbits=4, group_size=None, quant_scale=False, quant_zero=False, axis=1)
 
 model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
@@ -38,7 +33,7 @@ else:
 
 #Replace HQQLinear layers matmuls to support int4 mm
 from hqq.utils.patching import prepare_for_inference
-prepare_for_inference(model, backend="torchao_int4")
+prepare_for_inference(model, backend="marlin")
 
 #Import custom HF generator
 from hqq.utils.generation_hf import HFGenerator
