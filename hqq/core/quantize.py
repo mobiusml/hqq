@@ -477,8 +477,9 @@ class HQQLinear(nn.Module):
         # TODO: later
         return self
 
-    def to_empty(self, device, recurse=True):
-        return self.cuda(device)
+    #TODO: later
+    # def to_empty(self, device, recurse=True):
+    #     return self.cuda(device)
 
     def type(self, dst_type):
         # TODO: later
