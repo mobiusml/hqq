@@ -356,7 +356,7 @@ class HQQLinear(nn.Module):
 
     def __init__(
         self,
-        linear_layer: nn.Module,
+        linear_layer: Union[nn.Module, None],
         quant_config: dict,
         del_orig: bool = True,
         compute_dtype: torch.dtype = float16,
