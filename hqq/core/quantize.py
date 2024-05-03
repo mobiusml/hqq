@@ -4,6 +4,7 @@ import torch
 from torch import uint8, int32, float16, nn, Tensor
 import copy
 from enum import Enum
+from typing import Union
 
 from .utils import is_divisible
 from .optimize import optimize_weights_proximal
@@ -58,7 +59,7 @@ class Quantizer:
         round_zero: bool = False,
         axis: int = 0,
         bitpack: bool = True,
-        compute_dtype: torch.dtype | None = None,
+        compute_dtype: Union[torch.dtype, None] = None,
         view_as_float: bool = False,
         device: str = "cuda",
     ) -> tuple:
@@ -355,7 +356,7 @@ class HQQLinear(nn.Module):
 
     def __init__(
         self,
-        linear_layer: nn.Module | None,
+        linear_layer: nn.Module,
         quant_config: dict,
         del_orig: bool = True,
         compute_dtype: torch.dtype = float16,

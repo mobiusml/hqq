@@ -3,6 +3,7 @@
 import torch
 import gc
 import numpy as np
+from typing import Union
 
 
 def cleanup() -> None:
@@ -15,7 +16,7 @@ def is_divisible(val1: int, val2: int) -> bool:
 
 
 def zero_pad_row(
-    tensor: torch.Tensor, num_rows: int, dtype: torch.dtype | None = None
+    tensor: torch.Tensor, num_rows: int, dtype: Union[torch.dtype, None] = None
 ) -> torch.Tensor:
     out = torch.zeros(
         [num_rows, tensor.shape[1]],
