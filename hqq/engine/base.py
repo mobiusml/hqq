@@ -79,7 +79,7 @@ class HQQWrapper:
         adapter: str = None,
     ):
         # Both local and hub-support
-        save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub)
+        save_dir = BaseHQQModel.try_snapshot_download(save_dir_or_hub, cache_dir)
         arch_key = cls._get_arch_key_from_save_dir(save_dir)
         cls._check_arch_support(arch_key)
 
