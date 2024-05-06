@@ -121,7 +121,7 @@ For usage with HF's transformers, see the example below:
 from transformers import AutoModelForCausalLM, HqqConfig
 
 # All linear layers will use the same quantization config
-quant_config  = HqqConfig(nbits=4, group_size=64, quant_zero=False, quant_scale=False, axis=0)
+quant_config = HqqConfig(nbits=4, group_size=64, quant_zero=False, quant_scale=False, axis=1)
 
 # Load and quantize
 model = AutoModelForCausalLM.from_pretrained(
@@ -133,7 +133,11 @@ model = AutoModelForCausalLM.from_pretrained(
 
 #Set the right backend here
 axis = quant_config.to_dict()["weight_quant_params"]["axis"]
-HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE) 
+HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE)
+
+#Patch for faster inference
+from hqq.utils.patching import prepare_for_inference
+prepare_for_inference(model, backend="torchao_int4") 
 ```
 <b>Note</b>: You can't save/load quantized models with this approach. 
 
@@ -147,14 +151,24 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=compute_dtype
 
 #Quantize
 from hqq.models.hf.base import AutoHQQHFModel
+quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1) 
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
-#Save
+#Set the right backend here
+axis = quant_config["weight_quant_params"]["axis"]
+HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE)
+
+#Save: Make sure to save the model before patching
 AutoHQQHFModel.save_quantized(model, save_dir)
 
 #Load
 model = AutoHQQHFModel.from_quantized(save_dir)
+
+#Patch for faster inference
+from hqq.utils.patching import prepare_for_inference
+prepare_for_inference(model, backend="torchao_int4") 
 ```
+
 ##### Custom HF Models
 `AutoHQQHFModel` is meant to be compatible with any transformers model. However, its adaptability comes with a drawback - it may encounter issues or experience sluggishness when processing layers. If you encounter such problems, you have the option to create a custom model with clearly defined patching logic to replace `AutoHQQHFModel`. Below are examples of popular models you can utilize or expand upon for this purpose:
 
@@ -251,5 +265,3 @@ author = {Hicham Badri and Appu Shaji},
 month  = {November},
 year   = {2023}
 ```
-
-
