@@ -14,10 +14,11 @@ from typing import Union
 
 from huggingface_hub import snapshot_download
 from ..core.quantize import HQQLinear
-from ..core.peft import PeftUtils
+from ..core.peft import PeftUtils, _HQQ_LORA_CLASSES
+
 
 # Defined what is qualified as "linear layer"
-_QUANT_LAYERS = [nn.Linear]
+_QUANT_LAYERS = [nn.Linear, HQQLinear] + _HQQ_LORA_CLASSES
 _IGNORE_LINEAR = ["lm_head"]
 
 
@@ -73,13 +74,17 @@ def get_linear_tags_from_model(model, ignore: list) -> list:
 def forward_device_hooked(self, *args, **kwargs):
     args = list(args)
 
-    #eddit this to make torch.compile compatible
+    # eddit this to make torch.compile compatible
     for i in range(len(args)):
-        if(isinstance(args[i], (torch.Tensor, torch.nn.Parameter))):#if hasattr(args[i], "to"):
+        if isinstance(
+            args[i], (torch.Tensor, torch.nn.Parameter)
+        ):  # if hasattr(args[i], "to"):
             args[i] = args[i].to(self.device)
 
     for i in kwargs:
-        if(isinstance(kwargs[i], (torch.Tensor, torch.nn.Parameter))):#if hasattr(kwargs[i], "to"):
+        if isinstance(
+            kwargs[i], (torch.Tensor, torch.nn.Parameter)
+        ):  # if hasattr(kwargs[i], "to"):
             kwargs[i] = kwargs[i].to(self.device)
 
     # return self.__class__.forward(self, *args, **kwargs)
@@ -109,10 +114,16 @@ class BasePatch:
                 patch_fct(tmp_mapping[name]),
             )
 
+        cleanup()
+
     # This method iterates through layers of the model that are nn.Linear and processes them via new_nodule = patch_fct(module, params)
     @classmethod
     def patch_linearlayers(
-        cls, model, patch_fct: Callable, patch_params: Union[dict, None], verbose: bool = True
+        cls,
+        model,
+        patch_fct: Callable,
+        patch_params: Union[dict, None],
+        verbose: bool = True,
     ) -> None:
         ignore_tags = cls.get_ignore_layers(model)
 
@@ -132,13 +143,20 @@ class BasePatch:
                 patch_fct(tmp_mapping[name], patch_param),
             )
 
+        cleanup()
+
     ############################################
     # These tags are used to specfiy parameters of the patching in patch_linearlayers()
     @classmethod
     def set_auto_linear_tags(cls, model, ignore: list = _IGNORE_LINEAR) -> None:
-        #if len(cls.get_linear_tags()) == 0:
-        cls.linear_tags = get_linear_tags_from_model(model, ignore=ignore)
-        cls.get_linear_tags = lambda: cls.linear_tags
+        if hasattr(model, "linear_tags") is False:
+            linear_tags = cls.get_linear_tags()
+            model.linear_tags = (
+                linear_tags
+                if len(linear_tags) > 0
+                else get_linear_tags_from_model(model, ignore=ignore)
+            )
+            model.base_class = cls
 
     # Returns the current linear tags
     @classmethod
@@ -218,8 +236,14 @@ class BaseHQQModel:
 
     # Load weights from disk
     @classmethod
-    def load_weights(cls, save_dir: str, map_location = None):
+    def load_weights(cls, save_dir: str, map_location=None):
         return torch.load(cls.get_weight_file(save_dir), map_location=map_location)
+
+    # Set-up model with the necessary data
+    @classmethod
+    def setup_model(cls, model):
+        cls.autoname_modules(model)
+        cls.set_auto_linear_tags(model)
 
     # Main function to quantize a model. Basically goes through the linear layers specfied in the patching function and replaces them with HQQLinear
     @classmethod
@@ -228,20 +252,23 @@ class BaseHQQModel:
         model,
         quant_config: dict,
         compute_dtype: torch.dtype = float16,
-        device: Union[str, list, dict] = "cuda", 
+        device: Union[str, list, dict] = "cuda",
     ):
+        if hasattr(model, "hqq_quantized"):
+            print("Model was already quantized")
+            return
+
         # Set linear tags automatically
-        cls.autoname_modules(model)
-        cls.set_auto_linear_tags(model)
+        cls.setup_model(model)
 
         # Use the same quantization config for all linear layers. Use None to skip quantizing a specfic layer.
-        if True in [(key in cls.get_linear_tags()) for key in quant_config.keys()]:
+        if True in [(key in model.linear_tags) for key in quant_config.keys()]:
             # If the user doesn't specify a key from get_linear_tags, the layer is not quantized via (key, None)
-            patch_params = {key: None for key in cls.get_linear_tags()}
+            patch_params = {key: None for key in model.linear_tags}
             patch_params.update(quant_config)
         else:
             # Same quant_config for all layers
-            patch_params = {k: quant_config for k in cls.get_linear_tags()}
+            patch_params = {k: quant_config for k in model.linear_tags}
 
         # Get list of all nodes in order
         all_nodes = get_all_children_from_model(model, [])  # ordered nodes
@@ -303,6 +330,9 @@ class BaseHQQModel:
 
         # We replace the nn.Linear layers with HQQLinear
         def _patch_linear(linear_layer, quant_config):
+            if type(linear_layer) is HQQLinear:
+                return linear_layer
+
             current_device = device_map[linear_layer.name]
 
             if quant_config is not None:
@@ -348,6 +378,8 @@ class BaseHQQModel:
         # Set base class
         model.base_class = cls
 
+        model.hqq_quantized = True
+
         # Sync
         torch.cuda.synchronize()
 
@@ -384,7 +416,9 @@ class BaseHQQModel:
         cls.save_weights(weights, save_dir)
 
     @classmethod
-    def try_snapshot_download(cls, save_dir_or_hub: str, cache_dir: Union[str, None]= ""):
+    def try_snapshot_download(
+        cls, save_dir_or_hub: str, cache_dir: Union[str, None] = ""
+    ):
         if cache_dir is None:
             save_dir = pjoin("", save_dir_or_hub)
         else:
@@ -414,7 +448,7 @@ class BaseHQQModel:
         save_dir_or_hub,
         compute_dtype: torch.dtype = float16,
         device="cuda",
-        cache_dir: Union[str,None] = "",
+        cache_dir: Union[str, None] = "",
         adapter: str = None,
     ):
         # Get directory path
@@ -427,10 +461,7 @@ class BaseHQQModel:
         model.save_dir = save_dir
 
         # Name the layers
-        cls.autoname_modules(model)
-
-        # Set linear tags automatically
-        cls.set_auto_linear_tags(model)
+        cls.setup_model(model)
 
         # Load weights
         try:
@@ -471,11 +502,13 @@ class BaseHQQModel:
 
         # Load modules
         cls.patch_model(
-            model, _load_module, _load_module, {k: None for k in cls.get_linear_tags()}
+            model, _load_module, _load_module, {k: None for k in model.linear_tags}
         )
 
         # Load other weights that are not part of any module
         cls.post_module_load(model, weights)
+
+        model.hqq_quantized = True
 
         # Set base class
         model.base_class = cls

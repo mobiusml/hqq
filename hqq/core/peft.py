@@ -2,8 +2,7 @@
 #####################################################
 import torch
 from torch import float16, bfloat16, float32
-from torch import Tensor
-from torch import nn
+from torch import Tensor, nn
 import numpy as np
 from .quantize import HQQLinear, Quantizer
 from .utils import cleanup
@@ -402,12 +401,13 @@ class PeftUtils:
     @classmethod
     def get_base_class(cls, model, base_class):
         # Get base class
-        if (base_class is None) and hasattr(model, "base_class"):
-            base_class = model.base_class
+        if base_class is None:
+            base_class = getattr(model, "base_class", None)
 
         assert (
             base_class is not None
-        ), "You need to provide the base HQQ class (LlamaHQQ, MixtralHQQ, etc.) as model.base_class or as an argument base_class=LlamaHQQ"
+        ), "You need to provide the base HQQ class (LlamaHQQ, MixtralHQQ, etc.) as model.base_class or as an argument base_class=LlamaHQQ. Use AutoHQQHFMode if the model architecture is not supported."
+
         return base_class
 
     @classmethod
@@ -416,6 +416,8 @@ class PeftUtils:
     ) -> None:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
+
+        base_class.setup_model(model)
 
         # Freeze
         for param in model.parameters():
@@ -451,8 +453,10 @@ class PeftUtils:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
 
+        base_class.setup_model(model)
+
         # Linear tags
-        linear_tags = base_class.get_linear_tags()
+        linear_tags = model.linear_tags
 
         # Patch
         base_class.patch_linearlayers(
@@ -469,6 +473,8 @@ class PeftUtils:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
 
+        base_class.setup_model(model)
+
         lora_global_params = {}
 
         def _patch_linear_save_weights(layer, patch_params, return_layer=True):
@@ -478,7 +484,7 @@ class PeftUtils:
                 return layer
 
         # Linear tags
-        linear_tags = base_class.get_linear_tags()
+        linear_tags = model.linear_tags
 
         # Patch
         base_class.patch_linearlayers(
@@ -500,6 +506,8 @@ class PeftUtils:
     ) -> None:
         # Base classs
         base_class = cls.get_base_class(model, base_class)
+
+        base_class.setup_model(model)
 
         lora_data = torch.load(filename, map_location="cpu")
 
@@ -525,7 +533,7 @@ class PeftUtils:
                 return layer
 
         # Linear tags
-        linear_tags = base_class.get_linear_tags()
+        linear_tags = model.linear_tags
 
         # Patch
         base_class.patch_linearlayers(
