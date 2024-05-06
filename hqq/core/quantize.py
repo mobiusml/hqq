@@ -821,6 +821,7 @@ def hqq_base_quant_config(
     quant_scale: bool = False,
     offload_meta: bool = False,  # meta-data should be quantized with the same settings to use offload_meta
     view_as_float: bool = False,
+    axis: int = 0,
 ):
     assert (
         nbits in Quantizer.SUPPORTED_BITS
@@ -836,6 +837,7 @@ def hqq_base_quant_config(
         "optimize": True,
         "round_zero": True if nbits == 4 else False,
         "view_as_float": view_as_float,
+        "axis": axis,
     }
 
     if offload_meta:
