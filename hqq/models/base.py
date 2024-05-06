@@ -136,9 +136,9 @@ class BasePatch:
     # These tags are used to specfiy parameters of the patching in patch_linearlayers()
     @classmethod
     def set_auto_linear_tags(cls, model, ignore: list = _IGNORE_LINEAR) -> None:
-        if len(cls.get_linear_tags()) == 0:
-            cls.linear_tags = get_linear_tags_from_model(model, ignore=ignore)
-            cls.get_linear_tags = lambda: cls.linear_tags
+        #if len(cls.get_linear_tags()) == 0:
+        cls.linear_tags = get_linear_tags_from_model(model, ignore=ignore)
+        cls.get_linear_tags = lambda: cls.linear_tags
 
     # Returns the current linear tags
     @classmethod
