@@ -117,8 +117,9 @@ def get_lowrank_tuple_torch_gpu(tensor, max_rank, eps=None):
 def patch_merge_zeros_with_lora(layer, patch_params={"z_shift": 8, "keep_lora": False}):
     if type(layer) is HQQLinearLoRA:
         # Check config suppport
-        w_q_config = layer.linear_layer.quant_config["weight_quant_params"]
-        if (w_q_config["axis"] == 0) or (w_q_config["group_size"] is not None):
+        hqq_layer = layer.linear_layer
+        if (hqq_layer.meta["axis"] == 0) or (hqq_layer.meta["group_size"] is not None):
+            print('Skipping zeros lora merging for', layer.name)
             return layer
 
         layer.z_shift = patch_params["z_shift"]
