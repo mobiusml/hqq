@@ -383,8 +383,11 @@ class BaseHQQModel:
         cls.save_weights(weights, save_dir)
 
     @classmethod
-    def try_snapshot_download(cls, save_dir_or_hub: str, cache_dir: str = ""):
-        save_dir = pjoin(cache_dir, save_dir_or_hub)
+    def try_snapshot_download(cls, save_dir_or_hub: str, cache_dir: str | None = ""):
+        if cache_dir is None:
+            save_dir = pjoin("", save_dir_or_hub)
+        else:
+            save_dir = pjoin(cache_dir, save_dir_or_hub)
 
         if not os.path.exists(save_dir):
             save_dir = snapshot_download(repo_id=save_dir_or_hub, cache_dir=cache_dir)
@@ -410,7 +413,7 @@ class BaseHQQModel:
         save_dir_or_hub,
         compute_dtype: torch.dtype = float16,
         device="cuda",
-        cache_dir: str = "",
+        cache_dir: str | None = "",
         adapter: str = None,
     ):
         # Get directory path
