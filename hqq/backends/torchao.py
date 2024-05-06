@@ -68,7 +68,7 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
         self.inner_k_tiles = inner_k_tiles
         self.padding = padding
 
-        assert self.axis, "Only axis==1 is supported"
+        assert self.axis==1, "Only axis==1 is supported"
         assert self.nbits in [4], "Unsupported nbits."
         assert (
             self.compute_dtype is bfloat16
