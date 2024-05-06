@@ -10,6 +10,7 @@ from typing import Callable
 from tqdm import tqdm
 from abc import abstractmethod
 from functools import partial
+from typing import Union
 
 from huggingface_hub import snapshot_download
 from ..core.quantize import HQQLinear
@@ -111,7 +112,7 @@ class BasePatch:
     # This method iterates through layers of the model that are nn.Linear and processes them via new_nodule = patch_fct(module, params)
     @classmethod
     def patch_linearlayers(
-        cls, model, patch_fct: Callable, patch_params: dict | None, verbose: bool = True
+        cls, model, patch_fct: Callable, patch_params: Union[dict, None], verbose: bool = True
     ) -> None:
         ignore_tags = cls.get_ignore_layers(model)
 
@@ -227,7 +228,7 @@ class BaseHQQModel:
         model,
         quant_config: dict,
         compute_dtype: torch.dtype = float16,
-        device: str | list | dict = "cuda",
+        device: Union[str, list, dict] = "cuda", 
     ):
         # Set linear tags automatically
         cls.autoname_modules(model)
@@ -260,7 +261,7 @@ class BaseHQQModel:
 
         if isinstance(
             device, dict
-        ):  # input as {module block name (str): device (str | torch.device)}
+        ):  # input as {module block name (str): device (str or torch.device)}
             device_map = device
             num_devices = len(set([device_map[k] for k in device_map]))
             all_blocks = list(device_map.keys())
@@ -383,7 +384,7 @@ class BaseHQQModel:
         cls.save_weights(weights, save_dir)
 
     @classmethod
-    def try_snapshot_download(cls, save_dir_or_hub: str, cache_dir: str | None = ""):
+    def try_snapshot_download(cls, save_dir_or_hub: str, cache_dir: Union[str, None]= ""):
         if cache_dir is None:
             save_dir = pjoin("", save_dir_or_hub)
         else:
@@ -413,7 +414,7 @@ class BaseHQQModel:
         save_dir_or_hub,
         compute_dtype: torch.dtype = float16,
         device="cuda",
-        cache_dir: str | None = "",
+        cache_dir: Union[str,None] = "",
         adapter: str = None,
     ):
         # Get directory path
