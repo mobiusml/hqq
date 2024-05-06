@@ -1,10 +1,39 @@
 ## Half-Quadratic Quantization (HQQ)
-This folder contains the code to perform Half-Quadratic Quantization (<b>HQQ</b>) presented in our articles: 
+This repository contains the official implementation of Half-Quadratic Quantization (<b>HQQ</b>) presented in our articles: 
 * HQQ: https://mobiusml.github.io/hqq_blog/
 * HQQ+: https://mobiusml.github.io/1bit_blog/
 
-### WHat is HQQ?
-<b>HQQ</b> is a fast and accurate model quantizer that skips the need for calibration data. It's super simple to implement (just a few lines of code for the optimizer). It can crunch through quantizing the Llama2-70B model in only 4 minutes! 🚀
+### What is HQQ?
+<b>HQQ</b> is a fast and accurate model quantizer that skips the need for calibration data. Quantize the largest models, without calibration data, in just a few minutes at most 🚀.
+
+<details>
+  <summary>FAQ </summary>
+ <b> Why should I use HQQ instead of other quantization methods? </b><br>
+<ul>
+<li> HQQ is very fast to quantize models.</li>
+<li> It supports 8,4,3,2,1 bits.</li>
+<li> You can use it on any model (LLMs, Vision, etc.).</li>
+<li> The dequantization step is a linear operation, this means that HQQ is compatbile with various optimized CUDA/Triton kernels.</li>
+<li> HQQ is compatible with peft training.</li>
+<li> We try to make HQQ fully compatible `torch.compile` for faster inference and training.</li>
+</ul>
+	
+  <b>What is the quality of the quantized models? </b><br>
+  We have detailed benchmarks on both language and vision models. Please refer to our blog posts: <a href="https://mobiusml.github.io/hqq_blog/">HQQ</a>, <a href="https://mobiusml.github.io/1bit_blog/">HQQ+</a>.<br> 
+
+  <b>What is the speed of the quantized models?</b><br>
+  4-bit models with `axis=1` can use optimized inference fused kernels like torchao's int4_gemm. This is the same kernel used in <a href="https://github.com/pytorch-labs/gpt-fast">gpt-fast</a> and based on our benchmarks, it's the fastest kernel available right now. We also support the <a href="https://github.com/IST-DASLab/marlin/tree/master/marlin">Marlin</a> kernel. Moreover, we focus on making hqq fully compatible with `torch.compile` which speeds-up both training and inference. For more details, please refer to the backend section below. <br>
+
+  <b>What quantization settings should I use?</b><br>
+  You should start with `nbits=4, group_size=64, axis=1`. These settings offer a good balance between quality, vram usage and speed. If you want better results with the same vram usage, switch to `axis=0` and use the ATEN backend. If you want to use lower like `nbits=2`, you should use `axis=0`with a low group-size via HQQ+, meaning adding low-rank adapters and fine-tune with a small dataset. <br>
+	
+  <b>What does the `axis` parameter mean? </b><br>
+  The `axis` parameter is the axis along which grouping is performed. In general `axis=0` gives better results than `axis=1`, especially at lower bits. However, the optimized inference runtime only supports `axis=1` for the moment.<br>
+	
+  <b>What is the difference between HQQ and HQQ+?</b><br>
+  HQQ+ is HQQ with trainable low-rank adapters to improve the quantization quality at lower bits.<br>
+
+</details>
 
 ### Installation 
 First, make sure you have a Pytorch 2 version that matches your CUDA version: https://pytorch.org/
@@ -41,14 +70,15 @@ The quantization parameters are set as follows:
 - ```offload_meta``` (bool): if True, meta-data is offloaded to the CPU.
 - ```view_as_float``` (bool): if True, the quantized parameter is viewed as float instead of a int type.
 
-Setting ```offload_meta=True``` drastically decreases the GPU memory requirements but makes processing slightly slower for smaller group-sizes. With this setting, you can run Llama2-70B and Mixtral with HQQ 2-bit using only 18.8GB and 13GB VRAM respectively!
+Setting ```offload_meta=True``` drastically decreases the GPU memory requirements but makes processing slower for smaller group-sizes. When turned on, you can run Llama2-70B and Mixtral with HQQ 2-bit using only 18.8GB and 13GB VRAM respectively.
 
 ### Backend
-You can try to change the backend which could speed-up the runtime:
+#### Native Backends
+The following native backends can be used by the `HQQLinear` module:
 ```Python
 HQQLinear.set_backend(HQQBackend.PYTORCH)          #Pytorch backend
-HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)  #Compiled Pytorch via dynamo
-HQQLinear.set_backend(HQQBackend.ATEN)             #C++ Aten/CUDA backend (set automatically by default if available)
+HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)  #Compiled Pytorch
+HQQLinear.set_backend(HQQBackend.ATEN)             #Aten/CUDA backend
 ```
 The ```HQQBackend.ATEN``` backend is automatically installed and used by default when available.
 Note that ```HQQBackend.ATEN```  only supports `axis=0`. For `axis=1` you need to use ```HQQBackend.PYTORCH``` or ```HQQBackend.PYTORCH_COMPILE```.
@@ -63,11 +93,19 @@ Below you can find the speed-up benchmark with various backends, ```HQQBackend.P
  </center>
 </div> 
 
-Additionally, we support external backends for faster inference with fused kernels. You can use these backends after the model was quantized as follows:
+#### Faster Inference
+We support external backends for faster inference with fused kernels. You can enable one of the backends after the model was quantized as follows:
 ```Python
 from hqq.utils.patching import prepare_for_inference
-prepare_for_inference(model, backend="torchao_int4") #torchao's int4mm kernel, use compute_dtype=bfloat16
-prepare_for_inference(model, backend="marlin", allow_merge=True) #marlin int4 kernel.
+
+#Pytorch backend that makes the model compatible with fullgrah torch.compile: works with any settings
+#prepare_for_inference(model) 
+
+#Torchao's tiny_gemm backned (fastest): nbits=4, compute_dtype=bfloat16, axis=1
+prepare_for_inference(model, backend="torchao_int4") 
+
+#Marlin backend: nbits=4, axis=1, compute_dtype=float16, group_size=None
+#prepare_for_inference(model, backend="marlin", allow_merge=True) 
 ```
 These backends only work with 4-bit quantization and `axis=1`. Additionally, for <a href="https://github.com/IST-DASLab/marlin.git">Marlin</a>, we only support `group_size=None`. Below you can find a comparison between the different backends. The torchao kernel reaches 195 tokens/sec (generation speed) on a 4090.
 
@@ -75,95 +113,41 @@ These backends only work with 4-bit quantization and `axis=1`. Additionally, for
     <img src="https://github.com/mobiusml/hqq/blob/master/imgs/llama_int4_4090.png" alt="backend 4090" >
 </p>
 
-### Supported Models
-#### LLMs 
-- Llama (Hugging Face + VLLM) 🦙
-- Mistral (Hugging Face)
-- Mixtral-8x7B (Hugging Face)
-- Phi + Phi_opt (Hugging Face)
 
-#### Vision 
-- ViT-CLIP (timm) 🖼️
-
-#### Auto Mode
-- Hugging Face
-
-### Hugging Face 🤗
-First, make sure you have your Hugging Face token properly set via:
-```
-huggingface-cli login --token <your-token>
-```
-#### Basic Usage
-You can quantize a Hugging Face model as follows:
+### Usage with Models
+#### Transformers 🤗
+For usage with HF's transformers, see the example below:
 ```Python
-from hqq.engine.hf import HQQModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, HqqConfig
 
-#Model and setttings
-model_id      = 'meta-llama/Llama-2-7b-chat-hf'
-compute_dtype = torch.float16
-device        = 'cuda:0'
+# All linear layers will use the same quantization config
+quant_config  = HqqConfig(nbits=4, group_size=64, quant_zero=False, quant_scale=False, axis=0)
 
-#Load model on the CPU
-######################
-model     = HQQModelForCausalLM.from_pretrained(model_id, torch_dtype=compute_dtype)
-tokenizer = AutoTokenizer.from_pretrained(model_id) 
+# Load and quantize
+model = AutoModelForCausalLM.from_pretrained(
+    model_id, 
+    torch_dtype=torch.float16, 
+    device_map="cuda", 
+    quantization_config=quant_config
+)
 
-#Quantize the model
-######################
-from hqq.core.quantize import *
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, device=device) 
-
+#Set the right backend here
+axis = quant_config.to_dict()["weight_quant_params"]["axis"]
+HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE) 
 ```
+<b>Note</b>: You can't save/load quantized models with this approach. 
 
-You can save/load a quantized model as follows:
-```Python
-#Save the quantized model
-model.save_quantized(save_dir=save_dir)
-
-#Load from local directory or Hugging Face Hub on a specific device
-model = HQQModelForCausalLM.from_quantized(save_dir_or_hfhub, device='cuda')
-```
-
-#### Multimodal
-For multimodal models, you can quantize the models separately. Here's an example that quantizes the Llama language model in Llava:
+#### HQQ Lib
+You can also utilize the HQQ library to quantize transformers models. This method allows for saving/loading quantized models and enables faster multi-GPU inference:
+##### Auto-Mode
 ```Python
 #Load the model on CPU
-import transformers
-model_id      = "llava-hf/llava-1.5-13b-hf"
-compute_dtype = torch.float16
-device        = 'cuda:0'
-
-processor = transformers.AutoProcessor.from_pretrained(model_id)
-model     = transformers.LlavaForConditionalGeneration.from_pretrained(model_id, torch_dtype=compute_dtype)
-
-#Quantize and offload to GPU
-from hqq.core.quantize import *
-from hqq.models.hf.llama import LlamaHQQ
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-LlamaHQQ.quantize_model(model.language_model, quant_config=quant_config, 
-                                              compute_dtype=compute_dtype, 
-                                              device=device)
-
-#Use fp16 CLIP and tower
-model.vision_tower          = model.vision_tower.to(device=device, dtype=compute_dtype)
-model.multi_modal_projector = model.multi_modal_projector.to(device=device, dtype=compute_dtype)
-model                       = model.eval();
-
-#Optimize/compile (Optional)
-model.vision_tower          = torch.compile(model.vision_tower)
-model.multi_modal_projector = torch.compile(model.multi_modal_projector)
-```
-
-#### Auto Mode
-If the model architecture is not manally defined in ```hqq/models/hf```, you can try the automatic mode that doesn't require knowing the architecture in advance:
-```Python
-from hqq.models.hf.base import AutoHQQHFModel
+from transformers import AutoModelForCausalLM
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=compute_dtype)
 
 #Quantize
-AutoHQQHFModel.quantize_model(model, quant_config=quant_config, 
-                                    compute_dtype=compute_dtype, 
-                                    device=device)
+from hqq.models.hf.base import AutoHQQHFModel
+AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
 #Save
 AutoHQQHFModel.save_quantized(model, save_dir)
@@ -171,93 +155,49 @@ AutoHQQHFModel.save_quantized(model, save_dir)
 #Load
 model = AutoHQQHFModel.from_quantized(save_dir)
 ```
-
-### VLLM (Experimental)
-By default, VLLM is not installed to avoid CUDA version problems. Make sure you install the right version that matches your CUDA settings (vllm <= 0.2.2): 
-https://docs.vllm.ai/en/latest/getting_started/installation.html 
-
-#### Basic Usage
-After installation, you can quantize VLLM models as follows:
+##### Custom HF Models
+`AutoHQQHFModel` is meant to be compatible with any transformers model. However, its adaptability comes with a drawback - it may encounter issues or experience sluggishness when processing layers. If you encounter such problems, you have the option to create a custom model with clearly defined patching logic to replace `AutoHQQHFModel`. Below are examples of popular models you can utilize or expand upon for this purpose:
 
 ```Python
-from hqq.engine.vllm import HQQLLM
-model_id = 'meta-llama/Llama-2-7b-chat-hf'
-
-#Loads the model (on CPU)
-######################
-model = HQQLLM(model=model_id)
-
-#Quantize the model and dispatch on GPU
-######################
-from hqq.core.quantize import *
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-model.quantize_model(quant_config=quant_config)
+from hqq.models.hf.llama import LlamaHQQ #Llama
+from hqq.models.hf.mistral import MistralHQQ #Mistral
+from hqq.models.hf.mixtral import MixtralHQQ #Mixtral
 ```
-
-#### Langchain
-Additionally, you can use the quantized model in Langchain (requires ```pip install langchain```) as follows:
-
-```Python
-from hqq.engine.vllm import LangchainVLLM
-llm = LangchainVLLM(max_new_tokens=1000, top_p=0.90, temperature=0.6).set(model)
-print(llm("Who is Elon Musk?"))
-```
-
-You can save/load a quantized model as follows:
-```Python
-#Save the quantized model
-model.save_quantized(save_dir=save_dir)
-
-#Load from local directory or Hugging Face Hub
-model = HQQLLM.from_quantized(save_dir_or_hfhub)
-```
-
-Notes:
-- Support is broken since post 0.2.2 update.
-- The VLLM backend only works with a single GPU for now.
-- Only VLLM models created via ```save_quantized``` can be loaded with ```HQQLLM.from_quantized```.
-
-### Timm 🖼️
-Timm backend is also supported. Here's how you use it:
-
-```Python
-model_id = 'vit_large_patch14_clip_224.laion2b'
-
-#Load model on the CPU
-######################
-from hqq.engine.timm import HQQtimm
-model = HQQtimm.create_model(model_id, pretrained=True)
-
-#Quantize the model
-######################
-from hqq.core.quantize import *
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16)
-
-```
-
-You can save/load the quantized models as follows:
-```Python
-#Save the quantized model
-model.save_quantized(save_dir=save_dir)
-
-#Load from local directory or Hugging Face Hub
-model = HQQtimm.from_quantized(save_dir_or_hfhub)
-```
-
-### Quantize Custom Models 🗜️
-If you want to quantize your own model architecture, you need to write a patching logic that goes through all the linear layers and replaces them with ```HQQLinear```. You can follow the examples provided in ```hqq/models```.
 
 ### Custom Quantization Configurations ⚙️
-You can specify different quantization configs for different layers by feeding a dictionary in the form ```linear_tag: BaseQuantizeConfig()```, The following example uses 4-bit for ```self_attn.v_proj``` and 2-bit for the rest of the layers:
+You can set up various quantization configurations for different layers by specifying the settings for each layer name:
+#### Transformers 🤗
+```Python
+# Each linear layer with the same tag will use a dedicated quantization config
+q4_config = {'nbits':4, 'group_size':64, 'quant_zero':False, 'quant_scale':False}
+q3_config = {'nbits':3, 'group_size':32, 'quant_zero':False, 'quant_scale':False}
+
+quant_config  = HqqConfig(dynamic_config={
+  'self_attn.q_proj':q4_config,
+  'self_attn.k_proj':q4_config,
+  'self_attn.v_proj':q4_config,
+  'self_attn.o_proj':q4_config,
+
+  'mlp.gate_proj':q3_config,
+  'mlp.up_proj'  :q3_config,
+  'mlp.down_proj':q3_config,
+})
+```
+#### HQQ lib
 ```Python
 from hqq.core.quantize import *
-q2_config    = BaseQuantizeConfig(nbits=2, group_size=16) #2-bit config
-q4_config    = BaseQuantizeConfig(nbits=4, group_size=64) #4-bit config
+q4_config    = BaseQuantizeConfig(nbits=4, group_size=64, quant_zero=False, quant_scale=False) 
+q3_config    = BaseQuantizeConfig(nbits=3, group_size=32, quant_zero=False, quant_scale=False)
 
-linear_tags  = HQQModelForCausalLM.get_linear_tags(model) #List of tags for the linear layers of the model
-quant_config = {k: q2_config for k in linear_tags}
-quant_config['self_attn.v_proj'] = q4_config
+quant_config = {'self_attn.q_proj':q4_config,
+  'self_attn.k_proj':q4_config,
+  'self_attn.v_proj':q4_config,
+  'self_attn.o_proj':q4_config,
+
+  'mlp.gate_proj':q3_config,
+  'mlp.up_proj'  :q3_config,
+  'mlp.down_proj':q3_config,
+}
 ```
 
 ### Peft Training
@@ -301,12 +241,6 @@ If you want to use muti-gpu training via FSDP, check out this awesome repo by An
 
 ### Examples 
 We provide a variety of examples demonstrating model quantization across different backends within the ```examples```  directory.
-
-In the ```examples/llama2_benchmark```directory, you'll find code to replicate our Llama2 benchmark. By default, this benchmark quantizes the Llama2-7B model with 4-bit precision and provides perplexity metrics on wikitext-2.
-
-To execute the benchmark, ensure you have the datasets package installed by running  ```pip install datasets```. Additionally, for the GPTQ and AWQ demos, you'll need to install the following packages: ```pip install auto-gptq[triton]==0.4.2 autoawq==0.1.4 triton==2.0.0```
-
-After installation, configure your Hugging Face 🤗 token either through the command line or within the demo files, and you're all set!
 
 ### Citation 📜
 ```
