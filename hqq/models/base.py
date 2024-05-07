@@ -254,7 +254,8 @@ class BaseHQQModel:
         compute_dtype: torch.dtype = float16,
         device: Union[str, list, dict] = "cuda",
     ):
-        if hasattr(model, "hqq_quantized"):
+        #Check if the model was already quantized
+        if(getattr(model, "hqq_quantized", False)):
             print("Model was already quantized")
             return
 
