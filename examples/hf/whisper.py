@@ -77,22 +77,22 @@ print("Decoder", np.mean(t[-100:]), "sec / sample")
 
 
 #openai/whisper-medium | RTX 4090
-#Encoder: use default backend because it needs GEMM
+#Encoder: use default backend
 #fp16                         : 0.0234 sec / sample
 #hqq 4-bit (default,compiled) : 0.0124 sec / sample | 1.89x faster 
 
 
-#Decoder: use torchao backend to decoe 1 token at a time
+#Decoder: use torchao backend to decode 1 token at a time
 #fp16                         : 0.01080 sec / sample
 #hqq 4-bit (ao_int4, compiled): 0.000928 sec / sample |  11.63x faster
 
 
-#openai/whisper-medium | RTX 4090
-#Encoder: use default backend because it needs GEMM
+#distil-whisper/distil-large-v3 | RTX 4090
+#Encoder: use default backend
 #fp16                         : 0.03738  sec / sample
 #hqq 4-bit (default,compiled) : 0.01869 sec / sample | 2x faster 
 
 
-#Decoder: use torchao backend to decoe 1 token at a time
+#Decoder: use torchao backend to decode 1 token at a time
 #fp16                         : 0.002592 sec / sample
 #hqq 4-bit (ao_int4, compiled): 0.000326 sec / sample |  7.95x faster
