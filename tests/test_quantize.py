@@ -2,7 +2,17 @@ import unittest, tempfile
 import torch
 from hqq.core.quantize import Quantizer, HQQLinear, BaseQuantizeConfig, HQQBackend
 from hqq.engine.hf import HQQModelForCausalLM
-from transformers import AutoModelForCausalLM, AutoConfig
+from transformers import AutoModelForCausalLM, AutoConfig, LlamaForCausalLM
+
+
+class CustomLlamaModel(LlamaForCausalLM):
+    def __init__(self, config):
+        super().__init__(config)
+        # replacing head with custom linear layer
+        qcfg = BaseQuantizeConfig(nbits=2, group_size=64)
+        linear = torch.nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.lm_head = HQQLinear(linear, qcfg)
+
 
 # python -m unittest tests.test_quantize.TestQuantizer.test_quantizer
 class TestQuantizer(unittest.TestCase):
@@ -151,7 +161,27 @@ class TestQuantizer(unittest.TestCase):
                                     y_float = hqq_linear_float.forward(x)
 
                                 assert torch.allclose(y_int, y_float, rtol=1e-5)
-                                
+
+    @staticmethod
+    def assert_equal_models(model, model_qt):
+        def assert_state_dict(v1, v2):
+            if isinstance(v1, torch.Tensor):
+                assert torch.isclose(v1, v2, rtol=1e-5).float().mean().item() > 0.99
+            if isinstance(v1, dict):
+                for _k, _v in v1.items():
+                    if isinstance(_v, torch.Tensor):
+                        assert torch.equal(_v, v2[_k])
+                    else:
+                        assert _v == v2[_k]
+
+        for n, p in model.named_parameters():
+            module_key, _, value_key = n.rpartition('.')
+            d1 = model.get_submodule(module_key).state_dict()
+            d2 = model_qt.get_submodule(module_key).state_dict()
+            for (k1, v1), (k2, v2) in zip(d1.items(), d2.items()):
+                assert k1 == k2
+                assert_state_dict(v1, v2)
+
     def test_save_and_load_model(self):
         compute_dtype = torch.bfloat16
         model_name = "meta-llama/Llama-2-7b-hf"
@@ -160,36 +190,32 @@ class TestQuantizer(unittest.TestCase):
 
         # load model on meta device without calling init and replace nn.Linear with Linear4bit
         model = AutoModelForCausalLM.from_config(cfg)
-        
+
         # quantize and save
         quant_config = BaseQuantizeConfig(nbits=4, group_size=64, view_as_float=True)
         HQQModelForCausalLM.quantize_model_(model, quant_config, compute_dtype=compute_dtype)
         model.save_quantized(f"{self.tmp_dir}/models")
-        
-        # load model
-        model_qt = HQQModelForCausalLM.from_quantized(f"{self.tmp_dir}/models")
-        
-        # check if the state_dicts are equal
-        def assert_state_dict(v1,v2):
-            if isinstance(v1, torch.Tensor):
-                assert torch.isclose(v1,v2, rtol=1e-5).float().mean().item() > 0.99
-            if isinstance(v1, dict):
-                for _k,_v in v1.items():
-                    if isinstance(_v, torch.Tensor):
-                        assert torch.equal(_v, v2[_k])
-                    else:
-                        assert _v == v2[_k]
 
-        for n,p in model.named_parameters():
-            module_key, _, value_key = n.rpartition('.')
-            d1 = model.get_submodule(module_key).state_dict()
-            d2 = model_qt.get_submodule(module_key).state_dict()
-            for (k1,v1),(k2,v2) in zip(d1.items(), d2.items()):
-                assert k1 == k2
-                assert_state_dict(v1,v2)
-        
-        
-                        
-                                    
+        # load model
+        model_qt = HQQModelForCausalLM.from_quantized(f"{self.tmp_dir}/models", compute_dtype=compute_dtype)
+
+        # check if the state_dicts are equal
+        self.assert_equal_models(model, model_qt)
+
+    def test_create_and_load_custom_model_with_hqqlinear_from_state_dict(self):
+        model_name = "meta-llama/Llama-2-7b-hf"
+        cfg = AutoConfig.from_pretrained(model_name)
+        cfg.num_hidden_layers = 2
+
+        model = CustomLlamaModel(cfg)
+        state_dict = model.state_dict()
+
+        loaded_model = CustomLlamaModel(cfg)
+        loaded_model.load_state_dict(state_dict)
+
+        # check if the state_dicts are equal
+        self.assert_equal_models(model, loaded_model)
+
+
 if __name__ == '__main__':
     unittest.main()

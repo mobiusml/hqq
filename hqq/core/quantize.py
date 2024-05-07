@@ -367,6 +367,8 @@ class HQQLinear(nn.Module):
         self.ready = False
         self.in_gpu = False
         self.bias = None
+        self.W_q = None
+        self.meta = None
         self.device = device
         self.compute_dtype = compute_dtype
         self.quant_config = copy.deepcopy(quant_config)
@@ -400,6 +402,10 @@ class HQQLinear(nn.Module):
         if self.del_orig:
             del self.linear_layer
         torch.cuda.empty_cache()
+
+    def extra_repr(self) -> str:
+        in_features, out_features = self.W_q.t().shape if self.W_q is not None else ("uninitialized", "uninitialized")
+        return f'in_features={in_features}, out_features={out_features}, bias={self.bias is not None}'
 
     # Set backends
     @classmethod
@@ -503,8 +509,33 @@ class HQQLinear(nn.Module):
         # TODO: later
         return self
 
-    def state_dict(self, *args, **kwargs):
-        return {"W_q": self.W_q, "meta": self.meta, "bias": self.bias}
+    def state_dict(self, *args, **kwargs):  # nn.Module override compatible
+        state = {"W_q": self.W_q, "meta": self.meta, "bias": self.bias}
+        if "destination" in kwargs and "prefix" in kwargs:
+            for key, value in state.items():
+                kwargs["destination"][kwargs["prefix"] + key] = value
+        return state
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+        W_q_key = prefix + "W_q"
+        meta_key = prefix + "meta"
+        bias_key = prefix + "bias"
+
+        if W_q_key not in state_dict:
+            missing_keys.append(W_q_key)
+        if meta_key not in state_dict:
+            missing_keys.append(meta_key)
+        if missing_keys:
+            return  # Can't load weights if either weight or meta is missing
+
+        W_q = nn.Parameter(state_dict.pop(W_q_key), requires_grad=False)
+        meta = state_dict.pop(meta_key)
+        bias = state_dict.pop(bias_key, None)
+
+        unexpected_keys += state_dict.keys()
+
+        self.load_state_dict({"W_q": W_q, "meta": meta, "bias": bias}, strict)
+
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
         self.W_q = state_dict["W_q"]
