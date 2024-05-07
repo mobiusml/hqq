@@ -367,8 +367,6 @@ class HQQLinear(nn.Module):
         self.ready = False
         self.in_gpu = False
         self.bias = None
-        self.W_q = None
-        self.meta = None
         self.device = device
         self.compute_dtype = compute_dtype
         self.quant_config = copy.deepcopy(quant_config)
@@ -382,6 +380,8 @@ class HQQLinear(nn.Module):
         self.set_backend(HQQLinear.backend)
 
         self.linear_layer = linear_layer
+        self.W_q = None
+        self.meta = None
 
         # Create streams
         self.stream_zero = torch.cuda.Stream()
@@ -404,8 +404,12 @@ class HQQLinear(nn.Module):
         torch.cuda.empty_cache()
 
     def extra_repr(self) -> str:
-        in_features, out_features = self.W_q.t().shape if self.W_q is not None else ("uninitialized", "uninitialized")
-        return f'in_features={in_features}, out_features={out_features}, bias={self.bias is not None}'
+        in_features, out_features = (
+            self.W_q.t().shape
+            if self.W_q is not None
+            else ("uninitialized", "uninitialized")
+        )
+        return f"in_features={in_features}, out_features={out_features}, bias={self.bias is not None}"
 
     # Set backends
     @classmethod
@@ -483,7 +487,7 @@ class HQQLinear(nn.Module):
         # TODO: later
         return self
 
-    #TODO: later
+    # TODO: later
     # def to_empty(self, device, recurse=True):
     #     return self.cuda(device)
 
@@ -516,7 +520,16 @@ class HQQLinear(nn.Module):
                 kwargs["destination"][kwargs["prefix"] + key] = value
         return state
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
         W_q_key = prefix + "W_q"
         meta_key = prefix + "meta"
         bias_key = prefix + "bias"
@@ -535,7 +548,6 @@ class HQQLinear(nn.Module):
         unexpected_keys += state_dict.keys()
 
         self.load_state_dict({"W_q": W_q, "meta": meta, "bias": bias}, strict)
-
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
         self.W_q = state_dict["W_q"]
