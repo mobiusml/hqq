@@ -211,7 +211,7 @@ class BaseHQQModel:
     ############################################
     # This method creates and empty model based on the specfied architecture
     @abstractmethod
-    def create_model(self):
+    def create_model(cls, save_dir, kwargs):
         pass
 
     # This method saves the model architecture only without inculding the weights (for example to a config.json)
@@ -450,12 +450,13 @@ class BaseHQQModel:
         device="cuda",
         cache_dir: Union[str, None] = "",
         adapter: str = None,
+        **kwargs
     ):
         # Get directory path
         save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)
 
         # Load model from config
-        model = cls.create_model(save_dir)
+        model = cls.create_model(save_dir, kwargs)
 
         # Track save directory
         model.save_dir = save_dir

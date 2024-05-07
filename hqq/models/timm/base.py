@@ -7,7 +7,7 @@ import timm
 class BaseHQQTimmModel(BaseHQQModel):
     # Save model architecture
     @classmethod
-    def cache_model(cls, model, save_dir):
+    def cache_model(cls, model, save_dir, kwargs):
         try:
             os.makedirs(save_dir, exist_ok=True)
         except Exception as error:
