@@ -116,7 +116,7 @@ These backends only work with 4-bit quantization and `axis=1`. Additionally, for
 
 ### Usage with Models
 #### Transformers 🤗
-For usage with HF's transformers, see the example below:
+For usage with HF's transformers, see the example below from the <a href="https://huggingface.co/docs/transformers/main/en/quantization#hqq">documentation</a>:
 ```Python
 from transformers import AutoModelForCausalLM, HqqConfig
 
@@ -130,20 +130,11 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="cuda", 
     quantization_config=quant_config
 )
-
-#Set the right backend here
-axis = quant_config.to_dict()["weight_quant_params"]["axis"]
-HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE)
-
-#Patch for faster inference
-from hqq.utils.patching import prepare_for_inference
-prepare_for_inference(model, backend="torchao_int4") 
 ```
-<b>Note</b>: You can't save/load quantized models with this approach. 
+<b>Note</b>: You can't save/load quantized models directly via `save_pretrained` with this approach. Use the save/load calls from the hqq lib instead.
 
 #### HQQ Lib
-You can also utilize the HQQ library to quantize transformers models. This method allows for saving/loading quantized models and enables faster multi-GPU inference:
-##### Auto-Mode
+You can also utilize the HQQ library to quantize transformers models:
 ```Python
 #Load the model on CPU
 from transformers import AutoModelForCausalLM
@@ -153,23 +144,31 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=compute_dtype
 from hqq.models.hf.base import AutoHQQHFModel
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1) 
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
+```
+#### Save/Load
+You can save/load quantized models as follows:
+```Python
+from hqq.models.hf.base import AutoHQQHFModel
 
-#Set the right backend here
-axis = quant_config["weight_quant_params"]["axis"]
-HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE)
-
-#Save: Make sure to save the model before patching
+#Save: Make sure to save the model BEFORE any patching
 AutoHQQHFModel.save_quantized(model, save_dir)
 
 #Load
 model = AutoHQQHFModel.from_quantized(save_dir)
-
-#Patch for faster inference
-from hqq.utils.patching import prepare_for_inference
-prepare_for_inference(model, backend="torchao_int4") 
+```
+#### Setting a backend
+You can set a native backned as follows:
+```Python
+HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE)
 ```
 
-##### Custom HF Models
+You can patch for faster inference as explained in the <a href="https://github.com/mobiusml/hqq/edit/master/Readme.md#backend">backend</a> section:
+```Python
+from hqq.utils.patching import prepare_for_inference
+prepare_for_inference(model, backend="torchao_int4")
+```
+
+#### Custom HF Models
 `AutoHQQHFModel` is meant to be compatible with any transformers model. However, its adaptability comes with a drawback - it may encounter issues or experience sluggishness when processing layers. If you encounter such problems, you have the option to create a custom model with clearly defined patching logic to replace `AutoHQQHFModel`. Below are examples of popular models you can utilize or expand upon for this purpose:
 
 ```Python
