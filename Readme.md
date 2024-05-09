@@ -239,7 +239,7 @@ HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
 
 #Convert LoRA weights to the same model dtype for faster inference
 model.eval()
-PeftUtils.cast_lora_weights(model, dtype=torch.float16)
+PeftUtils.cast_lora_weights(model, dtype=compute_dtype)
 
 #Save LoRA weights
 PeftUtils.save_lora_weights(model, filename)
