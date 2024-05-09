@@ -232,8 +232,8 @@ lora_params      = {'self_attn.q_proj': base_lora_params,
 #Add LoRA to linear/HQQ modules
 PeftUtils.add_lora(model, lora_params)
 
-#Optional: faster but might not work on older GPUs
-HQQLinear.set_backend(HQQBackend.ATEN_BACKPROP)
+#Optional: set your backend
+HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE)
 
 #Train ....
 
