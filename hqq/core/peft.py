@@ -6,6 +6,7 @@ from torch import Tensor, nn
 import numpy as np
 from .quantize import HQQLinear, Quantizer
 from .utils import cleanup
+from typing import Union
 
 
 # Return trainable weight matrix
@@ -367,7 +368,7 @@ def autoname_modules(model):
 
 
 # Patching functions
-def patch_linear_add_peft(layer: nn.Module, patch_params: dict | None) -> nn.Module:
+def patch_linear_add_peft(layer: nn.Module, patch_params: Union[dict,None]) -> nn.Module:
     _peft_config = patch_params
     if _peft_config:
         lora_type = (
@@ -379,7 +380,7 @@ def patch_linear_add_peft(layer: nn.Module, patch_params: dict | None) -> nn.Mod
     return new_layer
 
 
-def patch_linear_merge_peft(layer: nn.Module, patch_params: dict | None) -> nn.Module:
+def patch_linear_merge_peft(layer: nn.Module, patch_params: Union[dict,None]) -> nn.Module:
     _quant_config = patch_params
     if _quant_config:
         new_layer = layer.merge_and_quantize(_quant_config)
@@ -390,7 +391,7 @@ def patch_linear_merge_peft(layer: nn.Module, patch_params: dict | None) -> nn.M
     return new_layer
 
 
-def patch_linear_cast_peft(layer: nn.Module, patch_params: dict | None) -> nn.Module:
+def patch_linear_cast_peft(layer: nn.Module, patch_params: Union[dict,None]) -> nn.Module:
     if is_hqq_lora_layer(layer):
         layer.cast(patch_params)
     return layer

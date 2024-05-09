@@ -4,6 +4,7 @@ from abc import abstractmethod
 from ..models.base import BaseHQQModel
 import torch
 from torch import float16
+from typing import Union
 
 # Wrapper that makes it easier to add quantization support to different engines (HF, VLLM, etc.)
 
@@ -75,7 +76,7 @@ class HQQWrapper:
         save_dir_or_hub,
         compute_dtype: torch.dtype = float16,
         device="cuda",
-        cache_dir: str | None = "",
+        cache_dir: Union[str,None] = "",
         adapter: str = None,
     ):
         # Both local and hub-support

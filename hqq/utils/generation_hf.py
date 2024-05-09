@@ -5,6 +5,7 @@
 # https://gist.github.com/ArthurZucker/5dc54a3fb443e979fac437e5df7c800b
 
 import torch
+from typing import Union
 from transformers import StaticCache
 from tqdm import tqdm
 
@@ -15,11 +16,11 @@ class HFGenerator:
         model,
         tokenizer,
         max_new_tokens: int = 1000,
-        cache_size: int | None = None,
+        cache_size: Union[int,None] = None,
         do_sample: bool = False,
         temperature: float = 0.6,
         top_k: int = 5,
-        compile: str | None = None, #None / "partial" / "full"
+        compile: Union[str,None] = None, #None / "partial" / "full"
     ):
         super().__init__()
 

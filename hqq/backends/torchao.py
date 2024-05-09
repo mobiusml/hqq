@@ -131,8 +131,8 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
         self,
         W: Tensor,
         weight_quant_params: dict,
-        scale_quant_params=dict | None,
-        zero_quant_params=dict | None,
+        scale_quant_params=Union[dict,None],
+        zero_quant_params=Union[dict,None],
         offload_meta=False,
     ):
         W_q, meta = Quantizer.quantize(
