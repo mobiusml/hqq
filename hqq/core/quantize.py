@@ -349,10 +349,7 @@ class HQQMatmulCachedDeq(torch.autograd.Function):
 # Main linear layer
 class HQQLinear(nn.Module):
     # Default backend
-    if hqq_aten_is_available:
-        backend = HQQBackend.ATEN
-    else:
-        backend = HQQBackend.PYTORCH
+    backend = HQQBackend.PYTORCH
 
     def __init__(
         self,
@@ -416,6 +413,15 @@ class HQQLinear(nn.Module):
     # Set backends
     @classmethod
     def set_backend(cls, backend: HQQBackend):
+        if "aten" in backend.value:
+            if hqq_aten_is_available is False:
+                print(
+                    "ATEN/CUDA backend not availabe. Make sure you install the hqq_aten library."
+                )
+                return
+            print(
+                "Warning: the ATEN/CUDA backend only supports axis=0 and GPU runtime."
+            )
         HQQLinear.backend = backend
         cls.forward = getattr(cls, backend.value)
 
@@ -717,6 +723,10 @@ class HQQLinear(nn.Module):
     def dequantize_aten(self):
         # Dequantize
         assert self.ready, "model was not quantized"
+        assert (
+            self.meta["axis"] == 0
+        ), "only axis=0 is supported. Use HQQLinear.set_backend(HQQBackend.PYTORCH) instead."
+
         W_q, meta = self.W_q, self.meta
         device = W_q.device
         del_keys = set()
