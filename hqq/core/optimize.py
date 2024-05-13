@@ -65,7 +65,9 @@ def update_scale_grid_search(
     rng = torch.abs(scale).mean() * rng_dump if (rng_dump < 1.0) else rng_dump
 
     scale_shifted = (
-        torch.linspace(-rng, rng, N)[:, None].to(dtype).to(device).repeat(1, n_clusters)
+        torch.linspace(-rng, rng, N)[:, None]
+        .to(dtype=dtype, device=device)
+        .repeat(1, n_clusters)
         + scale
     )
 

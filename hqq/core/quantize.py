@@ -396,7 +396,9 @@ class HQQLinear(nn.Module):
             self.bias = (
                 None
                 if (self.linear_layer.bias is None)
-                else self.linear_layer.bias.to(self.compute_dtype).cuda(self.device)
+                else self.linear_layer.bias.to(
+                    device=self.device, dtype=self.compute_dtype
+                )
             )
 
         if self.del_orig:
