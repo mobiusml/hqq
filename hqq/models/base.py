@@ -1,7 +1,6 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import os
-import gc
 import torch
 from torch import nn
 from torch import float16
@@ -13,6 +12,7 @@ from functools import partial
 from typing import Union
 
 from huggingface_hub import snapshot_download
+from ..core.utils import cleanup
 from ..core.quantize import HQQLinear
 from ..core.peft import PeftUtils, _HQQ_LORA_CLASSES
 
@@ -20,12 +20,6 @@ from ..core.peft import PeftUtils, _HQQ_LORA_CLASSES
 # Defined what is qualified as "linear layer"
 _QUANT_LAYERS = [nn.Linear, HQQLinear] + _HQQ_LORA_CLASSES
 _IGNORE_LINEAR = ["lm_head"]
-
-
-# Cleanup GPU vram
-def cleanup() -> None:
-    torch.cuda.empty_cache()
-    gc.collect()
 
 
 # Finds the parent of a node module named "name"
@@ -254,8 +248,8 @@ class BaseHQQModel:
         compute_dtype: torch.dtype = float16,
         device: Union[str, list, dict] = "cuda",
     ):
-        #Check if the model was already quantized
-        if(getattr(model, "hqq_quantized", False)):
+        # Check if the model was already quantized
+        if getattr(model, "hqq_quantized", False):
             print("Model was already quantized")
             return
 
@@ -381,9 +375,6 @@ class BaseHQQModel:
 
         model.hqq_quantized = True
 
-        # Sync
-        torch.cuda.synchronize()
-
         return model
 
     # Prepares model weights by iterating through modules. It might some parameters that are NOT modules like model.param1
@@ -451,7 +442,7 @@ class BaseHQQModel:
         device="cuda",
         cache_dir: Union[str, None] = "",
         adapter: str = None,
-        **kwargs
+        **kwargs,
     ):
         # Get directory path
         save_dir = cls.try_snapshot_download(save_dir_or_hub, cache_dir)
@@ -522,8 +513,5 @@ class BaseHQQModel:
                 PeftUtils.cast_lora_weights(model, dtype=compute_dtype)
             except Exception as e:
                 print("Skipping adapter loading...", str(e))
-
-        # Sync
-        torch.cuda.synchronize()
 
         return model

@@ -7,7 +7,10 @@ from typing import Union
 
 
 def cleanup() -> None:
-    torch.cuda.empty_cache()
+    try:
+        torch.cuda.empty_cache()
+    except Exception:
+        pass
     gc.collect()
 
 
