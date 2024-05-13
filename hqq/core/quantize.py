@@ -380,10 +380,6 @@ class HQQLinear(nn.Module):
         self.W_q = None
         self.meta = None
 
-        # Create streams
-        self.stream_zero = torch.cuda.Stream()
-        self.stream_scale = torch.cuda.Stream()
-
         if initialize:
             self.initialize()
 
@@ -775,6 +771,11 @@ class HQQLinear(nn.Module):
 
     # Much faster with data-offloading zero_q/scale_q but takes more VRAM
     def dequantize_aten_with_streams(self):
+        # Create streams
+        if hasattr(self, "stream_zero") is False:
+            self.stream_zero = torch.cuda.Stream()
+            self.stream_scale = torch.cuda.Stream()
+
         # Dequantize
         assert self.ready, "model was not quantized"
         W_q, meta = self.W_q, self.meta
