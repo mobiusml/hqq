@@ -13,11 +13,13 @@ from .bitpack import BitPack
 
 # Main HQQ Quantizer
 class Quantizer:
-    SUPPORTED_BITS = [8, 4, 3, 2, 1]
+    SUPPORTED_BITS = [8, 6, 5, 4, 3, 2, 1]
     optimize_weights = optimize_weights_proximal
 
     bit_to_packing = {
         8: "8bit_u8",
+        6: "8bit_u8", #todo: bitpacking
+        5: "8bit_u8", #todo: bitpacking
         4: "4bit_u8",
         3: "3bit_32",
         2: "2bit_u8",
