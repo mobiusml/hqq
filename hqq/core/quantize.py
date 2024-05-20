@@ -159,12 +159,12 @@ class Quantizer:
             if meta["view_as_float"]:
                 W_q = W_q.view(meta["unpack_view_dtype"])
             W_r = Quantizer.unpack[meta["packing"]](W_q, dtype=compute_dtype)
-            if (meta["group_size"] is not None) and (meta["nbits"] == 3):
-                W_r = (
-                    W_r[: meta["group_size"]]
-                    if (meta["axis"] == 0)
-                    else W_r[:, : meta["group_size"]]
-                )
+            if meta["nbits"] == 3:
+                W_r = W_r[
+                    : meta["group_size"]
+                    if meta["axis"] == 0
+                    else meta["shape"][0] * meta["shape"][1] // meta["group_size"]
+                ]
         else:
             W_r = W_q.to(compute_dtype)
         W_r = ((W_r - meta["zero"]) * meta["scale"]).reshape(meta["shape"])
