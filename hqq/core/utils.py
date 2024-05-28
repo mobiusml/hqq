@@ -2,7 +2,7 @@
 #####################################################
 import torch
 import gc
-import numpy as np
+import math
 from typing import Union
 
 
@@ -15,7 +15,7 @@ def cleanup() -> None:
 
 
 def is_divisible(val1: int, val2: int) -> bool:
-    return int(val2 * np.ceil(val1 / val2)) == val1
+    return int(val2 * math.ceil(val1 / val2)) == val1
 
 
 def zero_pad_row(
