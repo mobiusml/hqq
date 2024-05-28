@@ -13,7 +13,7 @@ from .bitpack import BitPack
 
 # Main HQQ Quantizer
 class Quantizer:
-    SUPPORTED_BITS = [8, 6, 5, 4, 3, 2, 1]
+    SUPPORTED_BITS = [8, 6, 5, 4, 3, 2, 1.58, 1]
     optimize_weights = optimize_weights_proximal
 
     bit_to_packing = {
@@ -23,6 +23,7 @@ class Quantizer:
         4: "4bit_u8",
         3: "3bit_32",
         2: "2bit_u8",
+        1.58: "2bit_u8", #todo: bitpacking
         1: "1bit_u8",
     }
 
@@ -54,7 +55,7 @@ class Quantizer:
     def quantize(
         cls,
         tensor: Tensor,
-        nbits: int = 4,
+        nbits: float = 4,
         channel_wise: bool = True,
         group_size: int = 64,
         optimize: bool = False,
@@ -96,7 +97,7 @@ class Quantizer:
             _min = W.min(axis=axis, keepdim=True)[0]
             _max = W.max(axis=axis, keepdim=True)[0]
 
-        max_v = 2**nbits - 1
+        max_v = round(2**nbits - 1)
         min_v = 0
         min_max = [min_v, max_v]
 
