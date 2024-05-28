@@ -18,12 +18,12 @@ class Quantizer:
 
     bit_to_packing = {
         8: "8bit_u8",
-        6: "8bit_u8", #todo: bitpacking
-        5: "8bit_u8", #todo: bitpacking
+        6: "8bit_u8",  # todo: bitpacking
+        5: "8bit_u8",  # todo: bitpacking
         4: "4bit_u8",
         3: "3bit_32",
         2: "2bit_u8",
-        1.58: "2bit_u8", #todo: bitpacking
+        1.58: "2bit_u8",  # todo: bitpacking
         1: "1bit_u8",
     }
 
@@ -638,6 +638,15 @@ class HQQLinear(nn.Module):
         self.meta = meta
         self.cuda(self.device)
         self.ready = True
+
+    def unpack(self, reshape=False, dtype=None):
+        if self.ready is False:
+            return None
+        if self.meta["packing"]:
+            W_r = Quantizer.unpack[self.meta["packing"]](
+                self.W_q, dtype=dtype if (dtype is not None) else self.compute_dtype
+            )
+            return W_r.view(self.meta['shape']) if (reshape) else W_r 
 
     def dequantize(self):
         assert self.ready, "model was not quantized"
