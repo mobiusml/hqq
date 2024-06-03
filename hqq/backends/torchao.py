@@ -323,6 +323,7 @@ def patch_hqq_to_aoint4(layer, patch_params):
 
     del hqq_layer
     torch.cuda.empty_cache()
+    gc.collect() #necessary to properly free-up vram
 
     if type(layer) is HQQLinear:
         return hqq_aoint4_layer
