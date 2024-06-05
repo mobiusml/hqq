@@ -10,7 +10,7 @@
 # Only tested on Ada gpus.
 
 import torch
-import copy
+import copy, gc
 from torch import bfloat16, nn, Tensor
 import torch.nn.functional as F
 from typing import Union
