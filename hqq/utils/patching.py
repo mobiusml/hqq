@@ -10,11 +10,11 @@ from ..backends.torchao import patch_hqq_to_aoint4
 from ..backends.marlin import patch_hqq_to_marlin
 
 
-def patch_linearlayers(model, fct, patch_param=None, verbse=False):
+def patch_linearlayers(model, fct, patch_param=None, verbose=False):
     base_class = model.base_class if (hasattr(model, "base_class")) else AutoHQQHFModel
     base_class.setup_model(model)
     model.base_class.patch_linearlayers(
-        model, fct, dict([(k, patch_param) for k in model.linear_tags]), verbose=verbse
+        model, fct, dict([(k, patch_param) for k in model.linear_tags]), verbose=verbose
     )
 
 
@@ -75,7 +75,7 @@ def patch_lora_inference(layer, patch_param):
     return layer
 
 
-def prepare_for_inference(model, allow_merge=False, backend="default"):
+def prepare_for_inference(model, allow_merge=False, backend="default", verbose=False):
     if backend == "torchao_int4":
         allow_merge = False
 
@@ -84,15 +84,16 @@ def prepare_for_inference(model, allow_merge=False, backend="default"):
     cleanup()
 
     if backend == "torchao_int4":
-        patch_linearlayers(model, patch_hqq_to_aoint4)
+        patch_linearlayers(model, patch_hqq_to_aoint4, verbose=verbose)
         cleanup()
     if allow_merge:  # only compatible with symmetric quant kernels
         patch_linearlayers(
-            model, patch_merge_zeros_with_lora, {"z_shift": 8, "keep_lora": False}
+            model, patch_merge_zeros_with_lora, {"z_shift": 8, "keep_lora": False},
+            verbose=verbose,
         )
         cleanup()
     if backend == "marlin":
-        patch_linearlayers(model, patch_hqq_to_marlin, verbse=True)
+        patch_linearlayers(model, patch_hqq_to_marlin, verbose=verbose)
         cleanup()
 
     patch_linearlayers(
