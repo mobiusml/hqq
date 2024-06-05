@@ -10,7 +10,7 @@
 # Only tested on Ada gpus.
 
 import torch
-import copy, gc
+import copy
 from torch import bfloat16, nn, Tensor
 import torch.nn.functional as F
 from typing import Union
@@ -68,7 +68,7 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
         self.inner_k_tiles = inner_k_tiles
         self.padding = padding
 
-        assert self.axis==1, "Only axis==1 is supported"
+        assert self.axis == 1, "Only axis==1 is supported"
         assert self.nbits in [4], "Unsupported nbits."
         assert (
             self.compute_dtype is bfloat16
@@ -131,8 +131,8 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
         self,
         W: Tensor,
         weight_quant_params: dict,
-        scale_quant_params=Union[dict,None],
-        zero_quant_params=Union[dict,None],
+        scale_quant_params=Union[dict, None],
+        zero_quant_params=Union[dict, None],
         offload_meta=False,
     ):
         W_q, meta = Quantizer.quantize(
@@ -321,9 +321,10 @@ def patch_hqq_to_aoint4(layer, patch_params):
         hqq_layer.W_q, hqq_layer.meta, hqq_layer.bias
     )
 
+    del hqq_layer.W_q
+    del hqq_layer.meta
     del hqq_layer
     torch.cuda.empty_cache()
-    gc.collect() #necessary to properly free-up vram
 
     if type(layer) is HQQLinear:
         return hqq_aoint4_layer
@@ -372,6 +373,10 @@ def patch_hqq_to_aoint4_force_requantize(layer, patch_params):
         padding=True,
     )
 
+    del dummy_linear.weight
+    del dummy_linear
+    del hqq_layer.W_q
+    del hqq_layer.meta
     del hqq_layer
     torch.cuda.empty_cache()
 

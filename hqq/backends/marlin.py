@@ -107,9 +107,13 @@ def patch_hqq_to_marlin(layer, patch_params):
     marlin_layer = MarlinLinear(W_r, s, u=u, bias=hqq_layer.bias)
 
     if hasattr(layer, "linear_layer"):
+        del layer.linear_layer.W_q
+        del layer.linear_layer.meta
         del layer.linear_layer
         layer.linear_layer = marlin_layer
     else:
+        del hqq_layer.W_q
+        del hqq_layer.meta
         del hqq_layer
         layer = marlin_layer
 
