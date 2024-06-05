@@ -15,10 +15,13 @@ from huggingface_hub import snapshot_download
 from ..core.utils import cleanup
 from ..core.quantize import HQQLinear
 from ..core.peft import PeftUtils, _HQQ_LORA_CLASSES
+from ..backends.torchao import HQQLinearTorchWeightOnlynt4
+from ..backends.marlin import MarlinLinear
 
+_HQQ_BACKEND_CLASSES = [HQQLinearTorchWeightOnlynt4, MarlinLinear]
 
 # Defined what is qualified as "linear layer"
-_QUANT_LAYERS = [nn.Linear, HQQLinear] + _HQQ_LORA_CLASSES
+_QUANT_LAYERS = [nn.Linear, HQQLinear] + _HQQ_LORA_CLASSES + _HQQ_BACKEND_CLASSES
 _IGNORE_LINEAR = ["lm_head"]
 
 
