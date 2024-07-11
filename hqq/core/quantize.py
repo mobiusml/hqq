@@ -401,6 +401,22 @@ class HQQLinear(nn.Module):
             del self.linear_layer
         torch.cuda.empty_cache()
 
+    @classmethod
+    def from_weights(
+        cls, 
+        weight: Tensor, 
+        bias: Union[Tensor, None], 
+        quant_config: dict, 
+        compute_dtype: torch.dtype = float16, 
+        device: str = "cuda", 
+        del_orig: bool = True):
+
+        dummy_linear = torch.nn.Linear(1, 1, bias=False)
+        dummy_linear.weight.data = weight 
+        dummy_linear.bias = bias
+
+        return cls(dummy_linear, quant_config=quant_config, compute_dtype=compute_dtype, device=device, del_orig=del_orig)
+
     def extra_repr(self) -> str:
         out = ""
         if hasattr(self, "meta"):
