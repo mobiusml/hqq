@@ -1,6 +1,6 @@
 # pip install git+https://github.com/mobiusml/hqq.git;
 # pip install bitblas;
-# num_threads=12; OMP_NUM_THREADS=$num_threads CUDA_VISIBLE_DEVICES=0 ipython3 
+# num_threads=16; OMP_NUM_THREADS=$num_threads CUDA_VISIBLE_DEVICES=0 ipython3 
 ##########################################################################################################################################################
 import torch, os
 
@@ -22,14 +22,23 @@ tokenizer    = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_path)
 model        = HQQModelForCausalLM.from_pretrained(model_id, cache_dir=cache_path, torch_dtype=compute_dtype, attn_implementation="sdpa")
 
 #Quantize
+#all 4-bit
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1)
-model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
-#Set default backends, to compare with int4mm
-if(quant_config['weight_quant_params']['axis']==0):
-    HQQLinear.set_backend(HQQBackend.ATEN)
-else:
-    HQQLinear.set_backend(HQQBackend.PYTORCH)
+#Mixed 4-bit (bitblas) / 2-bit (ATEN)
+# quant_config = {
+#     "self_attn.q_proj": BaseQuantizeConfig(nbits=2, group_size=32, quant_scale=False, quant_zero=False, axis=0),
+#     "self_attn.k_proj": BaseQuantizeConfig(nbits=2, group_size=32, quant_scale=False, quant_zero=False, axis=0),
+#     "self_attn.v_proj": BaseQuantizeConfig(nbits=2, group_size=32, quant_scale=False, quant_zero=False, axis=0),
+#     "self_attn.o_proj": BaseQuantizeConfig(nbits=2, group_size=32, quant_scale=False, quant_zero=False, axis=0),
+
+#     "mlp.gate_proj": BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1),
+#     "mlp.up_proj":   BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1),
+#     "mlp.down_proj": BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1),
+# }
+# HQQLinear.set_backend(HQQBackend.ATEN)
+
+model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
 ##########################################################################################################################################################
 
