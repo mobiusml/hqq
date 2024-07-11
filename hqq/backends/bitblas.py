@@ -11,12 +11,24 @@ import bitblas
 import copy
 from torch import float16, nn, Tensor
 import torch.nn.functional as F
-from typing import Union
+from typing import Union, List
 
 from ..core.quantize import HQQLinear
 from ..core.peft import HQQLinearLoRA
 from ..core.utils import cleanup
 
+@torch.library.custom_op("hqq::matmul_bitblas", mutates_args=())
+def matmul_bitblas(x: Tensor, W_q: Tensor, scale: Tensor, zero: Tensor, out_features:int, eng_tag:str) -> Tensor:
+	origin_x_size = x.size()
+	x = x.reshape(-1, origin_x_size[-1])
+	c = HQQLinearBitBlas.ENG_CACHE[eng_tag](x, W_q, scale=scale, zeros=zero)
+	new_shape = origin_x_size[:-1] + (out_features,)
+	c = c.reshape(new_shape)
+	return c
+
+@torch.library.register_fake("hqq::matmul_bitblas")
+def matmul_bitblas_fake(x: Tensor, W_q: Tensor, scale: Tensor, zero: Tensor, out_features:int, eng_tag: str) -> Tensor:
+    return torch.empty([x.shape[0], x.shape[1], out_features], device=W_q.device, dtype=scale.dtype)
 
 
 class HQQLinearBitBlas(torch.nn.Module):
@@ -65,7 +77,7 @@ class HQQLinearBitBlas(torch.nn.Module):
 			K=self.in_features,  
 			A_dtype="float16",  
 			W_dtype=HQQLinearBitBlas.BIT_TO_DTYPE[self.nbits],  
-			accum_dtype="float16",  
+			accum_dtype="float16", #float32 ?
 			out_dtype="float16",  
 			layout="nt",  
 			with_bias=False, 
@@ -105,13 +117,16 @@ class HQQLinearBitBlas(torch.nn.Module):
 	###################### Forward/matmul ######################
 
 	# @torch.jit.ignore()
+	# def matmul(self, x: Tensor) -> Tensor:
+	# 	origin_x_size = x.size()
+	# 	x = x.reshape(-1, origin_x_size[-1])
+	# 	c = self.matmul_eng(x, self.W_q, scale=self.scale, zeros=self.zero)
+	# 	new_shape = origin_x_size[:-1] + (self.out_features,)
+	# 	c = c.reshape(new_shape)
+	# 	return c
+
 	def matmul(self, x: Tensor) -> Tensor:
-		origin_x_size = x.size()
-		x = x.reshape(-1, origin_x_size[-1])
-		c = self.matmul_eng(x, self.W_q, scale=self.scale, zeros=self.zero)
-		new_shape = origin_x_size[:-1] + (self.out_features,)
-		c = c.reshape(new_shape)
-		return c
+		return matmul_bitblas(x, self.W_q, self.scale, self.zero, self.out_features, self.eng_tag) 
 
 	# TODO without matmul
 	def dequantize(self) -> Tensor:

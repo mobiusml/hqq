@@ -35,13 +35,13 @@ else:
 
 #Replace HQQLinear layers matmuls to support int4 mm
 from hqq.utils.patching import prepare_for_inference
-prepare_for_inference(model, backend="bitblas")
+prepare_for_inference(model, backend="bitblas", verbose=True) #It takes a while...
 
 #Import custom HF generator
 from hqq.utils.generation_hf import HFGenerator
 
 #Generate
-gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile=None)
-#gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile="partial").warmup() 
+#gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile=None)
+gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile="partial").warmup() 
 
 out = gen.generate("Write an essay about large language models.", print_tokens=True)
