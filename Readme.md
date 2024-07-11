@@ -106,6 +106,9 @@ prepare_for_inference(model, backend="torchao_int4")
 
 #Marlin backend: nbits=4, axis=1, compute_dtype=float16, group_size=None
 #prepare_for_inference(model, backend="marlin", allow_merge=True) 
+
+#Bitblas backend: nbits=4/2/1, axis=1, compute_dtype=float16, group_size=None
+#prepare_for_inference(model, backend="bitblas") 
 ```
 These backends only work with 4-bit quantization and `axis=1`. Additionally, for <a href="https://github.com/IST-DASLab/marlin.git">Marlin</a>, we only support `group_size=None`. Below you can find a comparison between the different backends. The torchao kernel reaches 195 tokens/sec (generation speed) on a 4090.
 
