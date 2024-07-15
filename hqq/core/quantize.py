@@ -458,7 +458,7 @@ class HQQLinear(nn.Module):
                 _, self.meta["meta_zero"] = Quantizer.cuda(
                     None, self.meta["meta_zero"], device
                 )
-        else:
+        elif "zero" in self.meta:
             self.meta["zero"] = self.meta["zero"].to(device)
 
         if self.meta["quant_scale"]:
@@ -470,7 +470,7 @@ class HQQLinear(nn.Module):
                 _, self.meta["meta_scale"] = Quantizer.cuda(
                     None, self.meta["meta_scale"], device
                 )
-        else:
+        elif "scale" in self.meta:
             self.meta["scale"] = self.meta["scale"].to(device)
 
         # #Use zero/scale with streams for dequantization is faster than packing in "zero_scale"
