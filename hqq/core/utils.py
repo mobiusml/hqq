@@ -29,3 +29,40 @@ def zero_pad_row(
     out[: len(tensor)] = tensor
 
     return out
+
+
+# Map a Pytorch dtype into a safetensor dtype
+def encode_safetensor_type(data):
+    if data is None:
+        return None
+    if isinstance(data, (torch.Tensor, torch.nn.Parameter)):
+        return data
+    if isinstance(data, torch.Size):
+        return torch.tensor(data)
+    if isinstance(data, torch.dtype):
+        data = str(data)
+    if isinstance(data, (bool, int)):
+        return torch.tensor(int(data), dtype=torch.uint8)
+    if isinstance(data, float):
+        return torch.tensor(float(data), dtype=torch.float32)
+    if isinstance(data, str):
+        return torch.tensor([ord(i) for i in data], dtype=torch.uint8)
+
+# Decode a safetensor dtype into a Pytorch dtype
+def decode_safetensor_type(data, data_type):
+    if data_type is None:
+        return None
+    if data_type in [torch.Tensor, torch.nn.Parameter]:
+        return data
+    if data_type is torch.Size:
+        return torch.Size(data)
+    if data_type is bool:
+        return bool(data.item())
+    if data_type is int:
+        return int(data.item())
+    if data_type is float:
+        return float(data.item())
+    if data_type is str:
+        return "".join([chr(i) for i in data])
+    if data_type is torch.dtype:
+        return eval("".join([chr(i) for i in data]))

@@ -6,9 +6,25 @@ import copy
 from enum import Enum
 from typing import Union
 
-from .utils import is_divisible
+from .utils import is_divisible, encode_safetensor_type, decode_safetensor_type
 from .optimize import optimize_weights_proximal
 from .bitpack import BitPack
+
+_META_TYPE = {
+    "scale": torch.Tensor,
+    "zero": torch.Tensor,
+    "zero_scale": torch.Tensor,
+    "compute_dtype": torch.dtype,
+    "quant_zero": bool,
+    "quant_scale": bool,
+    "view_as_float": bool,
+    "unpack_view_dtype": torch.dtype,
+    "packing": str,
+    "axis": int,
+    "group_size": int,
+    "nbits": int,
+    "shape": torch.Size,
+}
 
 
 # Main HQQ Quantizer
@@ -382,6 +398,9 @@ class HQQLinear(nn.Module):
         self.linear_layer = linear_layer
         self.W_q = None
         self.meta = None
+        self.encoded_state_dict = (
+            True  # This makes state_dict compatible with safetensors
+        )
 
         if initialize:
             self.initialize()
@@ -403,19 +422,25 @@ class HQQLinear(nn.Module):
 
     @classmethod
     def from_weights(
-        cls, 
-        weight: Tensor, 
-        bias: Union[Tensor, None], 
-        quant_config: dict, 
-        compute_dtype: torch.dtype = float16, 
-        device: str = "cuda", 
-        del_orig: bool = True):
-
+        cls,
+        weight: Tensor,
+        bias: Union[Tensor, None],
+        quant_config: dict,
+        compute_dtype: torch.dtype = float16,
+        device: str = "cuda",
+        del_orig: bool = True,
+    ):
         dummy_linear = torch.nn.Linear(1, 1, bias=False)
-        dummy_linear.weight.data = weight 
+        dummy_linear.weight.data = weight
         dummy_linear.bias = bias
 
-        return cls(dummy_linear, quant_config=quant_config, compute_dtype=compute_dtype, device=device, del_orig=del_orig)
+        return cls(
+            dummy_linear,
+            quant_config=quant_config,
+            compute_dtype=compute_dtype,
+            device=device,
+            del_orig=del_orig,
+        )
 
     def extra_repr(self) -> str:
         out = ""
@@ -537,53 +562,80 @@ class HQQLinear(nn.Module):
         return self
 
     def state_dict(self, *args, **kwargs):  # nn.Module override compatible
-        state = {"W_q": self.W_q, "meta": self.meta, "bias": self.bias}
+        _encode_type = (
+            encode_safetensor_type if (self.encoded_state_dict) else lambda z: z
+        )
+
+        state = {"W_q": self.W_q} | {k: _encode_type(v) for k, v in self.meta.items()}
+        if self.bias is not None:
+            state["bias"] = self.bias
+        state["offload_meta"] = _encode_type(self.offload_meta)
+        if self.encoded_state_dict:
+            state["encoded_state_dict"] = _encode_type(self.encoded_state_dict)
+        # TODO: add support for quant zero/scale
+        # TODO: add quant_config
+
         if "destination" in kwargs and "prefix" in kwargs:
             for key, value in state.items():
                 kwargs["destination"][kwargs["prefix"] + key] = value
         return state
 
-    def _load_from_state_dict(
-        self,
-        state_dict,
-        prefix,
-        local_metadata,
-        strict,
-        missing_keys,
-        unexpected_keys,
-        error_msgs,
-    ):
-        W_q_key = prefix + "W_q"
-        meta_key = prefix + "meta"
-        bias_key = prefix + "bias"
+    # def _load_from_state_dict(
+    #     self,
+    #     state_dict,
+    #     prefix,
+    #     local_metadata,
+    #     strict,
+    #     missing_keys,
+    #     unexpected_keys,
+    #     error_msgs,
+    # ):
+    #     W_q_key = prefix + "W_q"
+    #     meta_key = prefix + "meta"
+    #     bias_key = prefix + "bias"
 
-        if W_q_key not in state_dict:
-            missing_keys.append(W_q_key)
-        if meta_key not in state_dict:
-            missing_keys.append(meta_key)
-        if missing_keys:
-            return  # Can't load weights if either weight or meta is missing
+    #     if W_q_key not in state_dict:
+    #         missing_keys.append(W_q_key)
+    #     if meta_key not in state_dict:
+    #         missing_keys.append(meta_key)
+    #     if missing_keys:
+    #         return  # Can't load weights if either weight or meta is missing
 
-        W_q = nn.Parameter(state_dict.pop(W_q_key), requires_grad=False)
-        meta = state_dict.pop(meta_key)
-        bias = state_dict.pop(bias_key, None)
+    #     W_q = nn.Parameter(state_dict.pop(W_q_key), requires_grad=False)
+    #     meta = state_dict.pop(meta_key)
+    #     bias = state_dict.pop(bias_key, None)
 
-        unexpected_keys += state_dict.keys()
+    #     unexpected_keys += state_dict.keys()
 
-        self.load_state_dict({"W_q": W_q, "meta": meta, "bias": bias}, strict)
+    #     self.load_state_dict({"W_q": W_q, "meta": meta, "bias": bias}, strict)
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
-        self.W_q = state_dict["W_q"]
-        self.meta = state_dict["meta"]
-        self.bias = state_dict["bias"] if ("bias" in state_dict) else None
+        if "encoded_state_dict" in state_dict:
+            encoded_state_dict = True
+            state_dict.pop("encoded_state_dict")
+        else:
+            encoded_state_dict = False
+
+        _decode_type = (
+            decode_safetensor_type if (encoded_state_dict) else lambda z, w: z
+        )
+
+        self.W_q = state_dict.pop("W_q")
+        self.bias = state_dict.pop("bias", None)
+        self.offload_meta = _decode_type(state_dict.pop("offload_meta", False), bool)
+        if "meta" in state_dict:
+            self.meta = state_dict["meta"]  # Backward compatibility
+        else:
+            self.meta = {
+                k: _decode_type(v, _META_TYPE[k]) for k, v in state_dict.items()
+            }  # safetensors version
 
         # Meta-data offloading
-        self.offload_meta = False
+        if self.offload_meta is None:
+            self.offload_meta = False
         for key in ["zero", "zero_q", "scale", "scale_q", "zero_scale"]:
-            if key in self.meta:
-                if self.meta[key].device.type == "cpu":
-                    self.offload_meta = True
-                    self.meta[key] = self.meta[key].contiguous().pin_memory()
+            if key in self.meta and self.offload_meta:
+                self.meta[key] = self.meta[key].cpu().contiguous().pin_memory()
 
         # Float view settings
         if "unpack_view_dtype" not in self.meta:
@@ -662,7 +714,7 @@ class HQQLinear(nn.Module):
             W_r = Quantizer.unpack[self.meta["packing"]](
                 self.W_q, dtype=dtype if (dtype is not None) else self.compute_dtype
             )
-            return W_r.view(self.meta['shape']) if (reshape) else W_r 
+            return W_r.view(self.meta["shape"]) if (reshape) else W_r
 
     def dequantize(self):
         assert self.ready, "model was not quantized"

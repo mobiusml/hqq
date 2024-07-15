@@ -389,6 +389,9 @@ class BaseHQQModel:
             if name in ignore_keys:
                 continue
             try:
+                module.encoded_state_dict = (
+                    False  # disable state_dict encoding for safetensors
+                )
                 state_dict = module.state_dict()
                 if len(state_dict) > 0:
                     weights[name] = dict(state_dict)
@@ -473,7 +476,7 @@ class BaseHQQModel:
                 return module.to(device=device, dtype=compute_dtype, non_blocking=True)
 
             state_dict = weights[module.name]
-            if ("W_q" in state_dict) and ("meta" in state_dict):
+            if "W_q" in state_dict:
                 module = HQQLinear(
                     linear_layer=None,
                     quant_config=None,
