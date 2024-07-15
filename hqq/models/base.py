@@ -398,7 +398,7 @@ class BaseHQQModel:
     @classmethod
     def save_patch_params(cls, model, save_dir: str):
 
-        with open(os.path.join(save_dir, 'quantize_config.json'), 'w') as f:
+        with open(cls.get_patch_params_file(save_dir), 'w') as f:
             json.dump(model.patch_params, f, indent=2)
 
     # Prepares model weights by iterating through modules. It might some parameters that are NOT modules like model.param1
