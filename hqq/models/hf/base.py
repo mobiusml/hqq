@@ -14,13 +14,13 @@ class BaseHQQHFModel(BaseHQQModel):
     # Create empty model from config
     @classmethod
     def create_model(cls, save_dir, kwargs):
-        config_kwargs = {}
+        model_kwargs = {}
         for key in ["attn_implementation"]:
             if key in kwargs:
-                config_kwargs[key] = kwargs[key]
+                model_kwargs[key] = kwargs[key]
 
         config = transformers.AutoConfig.from_pretrained(
-            cls.get_config_file(save_dir), **config_kwargs
+            cls.get_config_file(save_dir)
         )
 
         auto_class = transformers.AutoModel
@@ -31,7 +31,7 @@ class BaseHQQHFModel(BaseHQQModel):
             auto_class = transformers.AutoModelForCausalLM
 
         with init_empty_weights():
-            model = auto_class.from_config(config)
+            model = auto_class.from_config(config, **model_kwargs)
 
         return model
 
