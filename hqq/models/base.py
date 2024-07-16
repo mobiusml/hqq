@@ -17,9 +17,23 @@ from ..core.utils import cleanup
 from ..core.quantize import HQQLinear
 from ..core.peft import PeftUtils, _HQQ_LORA_CLASSES
 from ..backends.torchao import HQQLinearTorchWeightOnlynt4
-from ..backends.marlin import MarlinLinear
 
-_HQQ_BACKEND_CLASSES = [HQQLinearTorchWeightOnlynt4, MarlinLinear]
+_HQQ_BACKEND_CLASSES = [HQQLinearTorchWeightOnlynt4]
+
+try:
+    from ..backends.bitblas import HQQLinearBitBlas
+
+    _HQQ_BACKEND_CLASSES.append(HQQLinearBitBlas)
+except Exception:
+    pass
+
+try:
+    from ..backends.marlin import MarlinLinear
+
+    _HQQ_BACKEND_CLASSES.append(MarlinLinear)
+except Exception:
+    pass
+
 
 # Defined what is qualified as "linear layer"
 _QUANT_LAYERS = [nn.Linear, HQQLinear] + _HQQ_LORA_CLASSES + _HQQ_BACKEND_CLASSES
@@ -410,10 +424,10 @@ class BaseHQQModel:
             if name in ignore_keys:
                 continue
             try:
-                module.encoded_state_dict = (
-                    False  # disable state_dict encoding for safetensors
-                )
+                # disable state_dict encoding for safetensors
+                module.encoded_state_dict = False
                 state_dict = module.state_dict()
+
                 if len(state_dict) > 0:
                     weights[name] = dict(state_dict)
             except Exception:

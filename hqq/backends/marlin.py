@@ -1,13 +1,8 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
 #####################################################
 import torch
-
-try:
-    import marlin
-except Exception:
-    marlin = None
+import marlin
 from ..core.quantize import Quantizer
-
 
 class MarlinLinear(torch.nn.Module):
     def __init__(
