@@ -7,9 +7,16 @@ from ..core.utils import cleanup
 from ..core.peft import HQQLinearLoRA
 from ..models.hf.base import AutoHQQHFModel
 from ..backends.torchao import patch_hqq_to_aoint4
-from ..backends.marlin import patch_hqq_to_marlin
-from ..backends.bitblas import patch_hqq_to_bitblas
-
+try:
+    from ..backends.marlin import patch_hqq_to_marlin
+except Exception:
+        patch_hqq_to_marlin = None
+        print('Failed to import the Marlin backend. Check if marlin is correctly installed (https://github.com/IST-DASLab/marlin).')
+try:
+    from ..backends.bitblas import patch_hqq_to_bitblas
+except Exception:
+    patch_hqq_to_bitblas = None
+    print('Failed to import the BitBlas backend. Check if BitBlas is correctly installed (https://github.com/microsoft/BitBLAS).')
 
 def patch_linearlayers(model, fct, patch_param=None, verbose=False):
     base_class = model.base_class if (hasattr(model, "base_class")) else AutoHQQHFModel
@@ -84,7 +91,7 @@ def prepare_for_inference(model, allow_merge=False, backend="default", verbose=F
     patch_linearlayers(model, patch_lora_inference)
     cleanup()
 
-    if backend == "bitblas":
+    if backend == "bitblas" and (patch_hqq_to_bitblas is not None):
         patch_linearlayers(model, patch_hqq_to_bitblas, verbose=verbose)
         cleanup()
     if backend == "torchao_int4":
@@ -96,7 +103,7 @@ def prepare_for_inference(model, allow_merge=False, backend="default", verbose=F
             verbose=verbose,
         )
         cleanup()
-    if backend == "marlin":
+    if backend == "marlin" and (patch_hqq_to_marlin is not None):
         patch_linearlayers(model, patch_hqq_to_marlin, verbose=verbose)
         cleanup()
 

@@ -67,7 +67,7 @@ setup(
         "transformers>=4.36.1",
         "huggingface_hub",
         "termcolor",
-        "bitblas",
+        #"bitblas",
         #"timm",
     ],
 )
