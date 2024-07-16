@@ -21,15 +21,17 @@ _HQQ_BACKEND_CLASSES = [HQQLinearTorchWeightOnlynt4]
 
 try:
     from ..backends.bitblas import HQQLinearBitBlas
+
     _HQQ_BACKEND_CLASSES.append(HQQLinearBitBlas)
 except Exception:
-    pass 
+    pass
 
 try:
     from ..backends.marlin import MarlinLinear
+
     _HQQ_BACKEND_CLASSES.append(MarlinLinear)
 except Exception:
-    pass 
+    pass
 
 
 # Defined what is qualified as "linear layer"
@@ -401,10 +403,10 @@ class BaseHQQModel:
             if name in ignore_keys:
                 continue
             try:
-                module.encoded_state_dict = (
-                    False  # disable state_dict encoding for safetensors
-                )
+                # disable state_dict encoding for safetensors
+                module.encoded_state_dict = False
                 state_dict = module.state_dict()
+
                 if len(state_dict) > 0:
                     weights[name] = dict(state_dict)
             except Exception:

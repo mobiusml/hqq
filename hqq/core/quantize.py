@@ -24,6 +24,9 @@ _META_TYPE = {
     "group_size": int,
     "nbits": int,
     "shape": torch.Size,
+    "channel_wise": bool,
+    "optimize": bool,
+    "round_zero": bool,
 }
 
 
@@ -561,19 +564,36 @@ class HQQLinear(nn.Module):
         # TODO: later
         return self
 
+    # state_dict is encoded by default for safetensors support. You can get the raw dict by setting self.encoded_state_dict=False. \
+    # Note: you can't change the state once it's done
     def state_dict(self, *args, **kwargs):  # nn.Module override compatible
+        if (
+            self.quant_config["scale_quant_params"]
+            or self.quant_config["zero_quant_params"]
+        ) and self.encoded_state_dict:
+            raise Exception(
+                "Unsupported serialization for quantized scale/zero and self.encoded_state_dict=True"
+            )
+            # TODO: add support for quantized zero/scale case (quant_config and zero/scale)
+
         _encode_type = (
             encode_safetensor_type if (self.encoded_state_dict) else lambda z: z
         )
 
+        # Core data
         state = {"W_q": self.W_q} | {k: _encode_type(v) for k, v in self.meta.items()}
         if self.bias is not None:
             state["bias"] = self.bias
         state["offload_meta"] = _encode_type(self.offload_meta)
+
+        # Encoding flag
         if self.encoded_state_dict:
             state["encoded_state_dict"] = _encode_type(self.encoded_state_dict)
-        # TODO: add support for quant zero/scale
-        # TODO: add quant_config
+
+        # Quant config
+        state["stores_quant_config"] = _encode_type(True)
+        for k in self.quant_config["weight_quant_params"]:
+            state[k] = _encode_type(self.quant_config["weight_quant_params"][k])
 
         if "destination" in kwargs and "prefix" in kwargs:
             for key, value in state.items():
@@ -620,8 +640,37 @@ class HQQLinear(nn.Module):
             decode_safetensor_type if (encoded_state_dict) else lambda z, w: z
         )
 
+        # Quant-config
+        if state_dict.pop(
+            "stores_quant_config", False
+        ):  # check for backward compatibility
+            self.quant_config = {
+                "weight_quant_params": {
+                    k: _decode_type(state_dict[k], _META_TYPE[k])
+                    for k in [
+                        "nbits",
+                        "channel_wise",
+                        "group_size",
+                        "optimize",
+                        "round_zero",
+                        "axis",
+                        "view_as_float",
+                    ]
+                }
+            }
+            # TODO: scale/zero quant use-case
+            self.quant_config["scale_quant_params"] = state_dict.pop(
+                "scale_quant_params", None
+            )
+            self.quant_config["zero_quant_params"] = state_dict.pop(
+                "zero_quant_params", None
+            )
+
+        # W_q/ bias
         self.W_q = state_dict.pop("W_q")
         self.bias = state_dict.pop("bias", None)
+
+        # Meta
         self.offload_meta = _decode_type(state_dict.pop("offload_meta", False), bool)
         if "meta" in state_dict:
             self.meta = state_dict["meta"]  # Backward compatibility
