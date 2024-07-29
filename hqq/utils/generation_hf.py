@@ -190,7 +190,7 @@ class HFGenerator:
         logits, self.past_key_values = out.logits, out.past_key_values
         next_token = torch.argmax(logits[:, -1], dim=-1)[:, None]
         self.generated_ids[:, self.seq_length] = next_token[:, 0]
-        self.cache_position = torch.tensor([self.seq_length], device=self.device, dtype=torch.int)
+        self.cache_position = torch.tensor([self.seq_length], device=self.device, dtype=torch.long)
         self.begin_gen_position = self.cache_position.item()
         return next_token
 
