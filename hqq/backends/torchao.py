@@ -228,6 +228,9 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
             .contiguous()
         )
 
+        W_q = (W_q[::, ::2] << 4 | W_q[::, 1::2]).to(torch.uint8)
+        #https://github.com/pytorch/pytorch/blob/6f662e95756333284450ff9c3c6e78c796aa6e77/torch/testing/_internal/common_quantization.py#L478-L479
+
         # group_dequantize_tensor_from_qparams
         # W_r = W_q*scales + min_val
 
