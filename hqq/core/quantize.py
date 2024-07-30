@@ -524,7 +524,10 @@ class HQQLinear(nn.Module):
             )
 
         if self.bias is not None:
-            self.bias = self.bias.to(device=device, dtype=self.compute_dtype)
+            if(isinstance(self.bias, torch.nn.Parameter)):
+                self.bias.data = self.bias.data.to(device=device, dtype=self.compute_dtype)
+            if(isinstance(self.bias, torch.Tensor)):
+                self.bias = self.bias.to(device=device, dtype=self.compute_dtype)
 
         self.W_q = nn.Parameter(self.W_q, requires_grad=False)
         self.device = device
