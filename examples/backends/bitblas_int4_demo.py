@@ -4,10 +4,6 @@
 ##########################################################################################################################################################
 import torch, os
 
-os.environ["TOKENIZERS_PARALLELISM"]  = "1"
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32       = True
-
 cache_path     = '.'
 model_id       = "meta-llama/Llama-2-7b-chat-hf"
 compute_dtype  = torch.float16 
