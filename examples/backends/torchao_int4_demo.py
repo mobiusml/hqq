@@ -5,10 +5,6 @@
 ##########################################################################################################################################################
 import torch, os
 
-os.environ["TOKENIZERS_PARALLELISM"]  = "1"
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32       = True
-
 cache_path     = '.'
 model_id       = "meta-llama/Llama-2-7b-chat-hf"
 compute_dtype  = torch.bfloat16 #int4 kernel only works with bfloat16
@@ -25,12 +21,7 @@ model        = HQQModelForCausalLM.from_pretrained(model_id, cache_dir=cache_pat
 #Quantize
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1)
 model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, device=device)
-
-#Set default backends, to compare with int4mm
-if(quant_config['weight_quant_params']['axis']==0):
-    HQQLinear.set_backend(HQQBackend.ATEN)
-else:
-    HQQLinear.set_backend(HQQBackend.PYTORCH)
+HQQLinear.set_backend(HQQBackend.PYTORCH)
 
 ##########################################################################################################################################################
 
