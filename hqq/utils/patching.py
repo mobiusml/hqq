@@ -7,16 +7,17 @@ from ..core.utils import cleanup
 from ..core.peft import HQQLinearLoRA
 from ..models.hf.base import AutoHQQHFModel
 from ..backends.torchao import patch_hqq_to_aoint4
+from termcolor import colored
 try:
     from ..backends.marlin import patch_hqq_to_marlin
 except Exception:
         patch_hqq_to_marlin = None
-        print('Failed to import the Marlin backend. Check if marlin is correctly installed (https://github.com/IST-DASLab/marlin).')
+        print(colored('Warning: failed to import the Marlin backend. Check if marlin is correctly installed if you want to use the Marlin backend (https://github.com/IST-DASLab/marlin).', 'yellow'))
 try:
     from ..backends.bitblas import patch_hqq_to_bitblas
 except Exception:
     patch_hqq_to_bitblas = None
-    print('Failed to import the BitBlas backend. Check if BitBlas is correctly installed (https://github.com/microsoft/BitBLAS).')
+    print(colored('Warning: failed to import the BitBlas backend. Check if BitBlas is correctly installed if you want to use the bitblas backend (https://github.com/microsoft/BitBLAS).','yellow'))
 
 def patch_linearlayers(model, fct, patch_param=None, verbose=False):
     base_class = model.base_class if (hasattr(model, "base_class")) else AutoHQQHFModel
