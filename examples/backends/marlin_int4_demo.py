@@ -17,10 +17,10 @@ from hqq.core.quantize import *
 #Load
 tokenizer    = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_path)
 model        = AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_path, torch_dtype=compute_dtype, attn_implementation="sdpa")
-AutoHQQHFModel.setup_model(model)
 
 #Quantize
 quant_config = BaseQuantizeConfig(nbits=4, group_size=None, quant_scale=False, quant_zero=False, axis=1)
+AutoHQQHFModel.setup_model(model)
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 HQQLinear.set_backend(HQQBackend.PYTORCH)
 
