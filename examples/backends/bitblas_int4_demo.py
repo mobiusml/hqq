@@ -5,17 +5,19 @@
 import torch, os
 
 cache_path     = '.'
-model_id       = "meta-llama/Llama-2-7b-chat-hf"
+model_id       = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 compute_dtype  = torch.float16 
 device         = 'cuda:0'
 
 ##########################################################################################################################################################
-from hqq.engine.hf import HQQModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from hqq.models.hf.base import AutoHQQHFModel
 from hqq.core.quantize import *
 
 #Load
 tokenizer    = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_path)
-model        = HQQModelForCausalLM.from_pretrained(model_id, cache_dir=cache_path, torch_dtype=compute_dtype, attn_implementation="sdpa")
+model        = AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_path, torch_dtype=compute_dtype, attn_implementation="sdpa")
+AutoHQQHFModel.setup_model(model)
 
 #Quantize
 #all 4-bit
@@ -34,7 +36,7 @@ quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, qua
 # }
 # HQQLinear.set_backend(HQQBackend.ATEN)
 
-model.quantize_model(quant_config=quant_config, compute_dtype=compute_dtype, device=device)
+AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
 ##########################################################################################################################################################
 
