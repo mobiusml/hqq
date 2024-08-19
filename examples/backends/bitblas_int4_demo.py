@@ -17,7 +17,6 @@ from hqq.core.quantize import *
 #Load
 tokenizer    = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_path)
 model        = AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_path, torch_dtype=compute_dtype, attn_implementation="sdpa")
-AutoHQQHFModel.setup_model(model)
 
 #Quantize
 #all 4-bit
@@ -36,6 +35,7 @@ quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, qua
 # }
 # HQQLinear.set_backend(HQQBackend.ATEN)
 
+AutoHQQHFModel.setup_model(model)
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
 ##########################################################################################################################################################
