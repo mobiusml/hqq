@@ -83,6 +83,23 @@ def patch_lora_inference(layer, patch_param):
         layer.forward_lora = lambda x: forward_lora_inference(layer, x)
     return layer
 
+# Copied from https://github.com/pytorch/ao/blob/b523f9f9e15b6fb80d10f585d9cf45e0c5e4d10e/torchao/quantization/utils.py#L486-L501
+def recommended_inductor_config_setter():
+    """
+    Set inductor config to use the following optimizations which have been showed to improve performance for quantized models:
+        coordinate_descent_tuning = True
+        coordinate_descent_check_all_directions = True
+        force_fuse_int_mm_with_mul = True
+        fx_graph_cache = True
+        triton.unique_kernel_names = True
+        torch.set_float32_matmul_precision("high")
+    """
+    torch._inductor.config.coordinate_descent_tuning = True
+    torch._inductor.config.coordinate_descent_check_all_directions = True
+    torch._inductor.config.force_fuse_int_mm_with_mul = True
+    torch._inductor.config.fx_graph_cache = True
+    torch._inductor.config.triton.unique_kernel_names = True
+    torch.set_float32_matmul_precision("high")
 
 def prepare_for_inference(model, allow_merge=False, backend="default", verbose=False):
     if backend == "torchao_int4":
@@ -97,6 +114,7 @@ def prepare_for_inference(model, allow_merge=False, backend="default", verbose=F
         cleanup()
     if backend == "torchao_int4":
         patch_linearlayers(model, patch_hqq_to_aoint4, verbose=verbose)
+        recommended_inductor_config_setter()
         cleanup()
     if allow_merge:  # only compatible with symmetric quant kernels
         patch_linearlayers(
