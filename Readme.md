@@ -217,8 +217,7 @@ quant_config = {'self_attn.q_proj':q4_config,
 ```
 
 ### Peft Training
-Peft training is directly supported in the HuggingFace's peft library: https://huggingface.co/docs/peft/v0.12.0/en/developer_guides/quantization#hqq-quantization 
-If you still want to use hqq-lib's peft utilities, here's how: 
+Peft training is directly supported in the HuggingFace's <a href="https://huggingface.co/docs/peft/v0.12.0/en/developer_guides/quantization#hqq-quantization"> peft library</a>. If you still want to use hqq-lib's peft utilities, here's how: 
 
 ```Python
 #First, quantize/load a quantized HQQ model the
