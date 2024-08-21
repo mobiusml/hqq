@@ -217,7 +217,9 @@ quant_config = {'self_attn.q_proj':q4_config,
 ```
 
 ### Peft Training
-You can use HQQ for LoRA training as follows:
+Peft training is directly supported in the HuggingFace's peft library: https://huggingface.co/docs/peft/v0.12.0/en/developer_guides/quantization#hqq-quantization 
+If you still want to use hqq-lib's peft utilities, here's how: 
+
 ```Python
 #First, quantize/load a quantized HQQ model the
 from hqq.core.peft import PeftUtils
