@@ -39,10 +39,12 @@ def encode_safetensor_type(data):
         return torch.tensor(data)
     if isinstance(data, torch.dtype):
         data = str(data)
-    if isinstance(data, (bool, int)):
+    if isinstance(data, bool):
         return torch.tensor(int(data), dtype=torch.uint8)
+    if isinstance(data, int):
+        return torch.tensor(data, dtype=torch.int32)
     if isinstance(data, float):
-        return torch.tensor(float(data), dtype=torch.float32)
+        return torch.tensor(data, dtype=torch.float32)
     if isinstance(data, str):
         return torch.tensor([ord(i) for i in data], dtype=torch.uint8)
 
