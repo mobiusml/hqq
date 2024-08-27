@@ -112,7 +112,7 @@ class HQQLinearBitBlas(torch.nn.Module):
 
         self.matmul_eng = HQQLinearBitBlas.ENG_CACHE[self.eng_tag]
 
-        self.W_q = self.matmul_eng.transform_weight(self.W_q.reshape(self.shape))
+        self.W_q = self.matmul_eng.transform_weight(self.W_q.reshape(self.shape)).to(self.device)
         self.zero = self.zero.view(self.meta_shape_bitblas)
         self.scale = self.scale.view(self.meta_shape_bitblas)
         torch.cuda.empty_cache()
