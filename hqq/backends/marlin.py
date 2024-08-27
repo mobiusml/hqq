@@ -48,7 +48,7 @@ class MarlinLinear(torch.nn.Module):
             x.shape[:-1] + (self.scales.shape[1],), dtype=x.dtype, device=x.device
         )
         marlin.mul(
-            x.view((-1, x.shape[-1])),
+            x.to(self.device).view((-1, x.shape[-1])),
             self.Wq_packed,
             out.view((-1, out.shape[-1])),
             self.scales,

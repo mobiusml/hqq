@@ -56,7 +56,7 @@ def patch_add_weight_param(layer, patch_param):
 # Optimize HQQLinear.forward for inference
 def patch_hqq_inference(layer, patch_param):
     def forward_hqq_inferece(self, x):
-        out = torch.matmul(x, self.dequantize().T)  # TODO GEMV use-case
+        out = torch.matmul(x.to(self.device), self.dequantize().T)  # TODO GEMV use-case
         if self.bias is not None:
             out += self.bias
         return out

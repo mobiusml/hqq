@@ -147,7 +147,7 @@ class HQQLinearBitBlas(torch.nn.Module):
 
     def matmul(self, x: Tensor) -> Tensor:
         return matmul_bitblas(
-            x, self.W_q, self.scale, self.zero, self.out_features, self.eng_tag
+            x.to(self.device), self.W_q, self.scale, self.zero, self.out_features, self.eng_tag
         )
 
     # TODO without matmul
