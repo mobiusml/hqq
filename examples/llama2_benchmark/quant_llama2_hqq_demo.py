@@ -18,11 +18,11 @@ tokenizer = AutoTokenizer.from_pretrained(model_id,       use_auth_token=hf_auth
 ######################################################################################
 from hqq.core.quantize import *
 
-#quant_config = BaseQuantizeConfig(nbits=8, group_size=128)
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64)
-#quant_config = BaseQuantizeConfig(nbits=3, group_size=64)
-#quant_config = BaseQuantizeConfig(nbits=2, group_size=16)
-#quant_config = BaseQuantizeConfig(nbits=2, group_size=16, quant_scale=True) #scale is quantized to 8-bit/g=128
+#quant_config = BaseQuantizeConfig(nbits=8, group_size=128, axis=0)
+quant_config = BaseQuantizeConfig(nbits=4, group_size=64, axis=0)
+#quant_config = BaseQuantizeConfig(nbits=3, group_size=64, axis=0)
+#quant_config = BaseQuantizeConfig(nbits=2, group_size=16, axis=0)
+#quant_config = BaseQuantizeConfig(nbits=2, group_size=16, quant_scale=True, axis=0) #scale is quantized to 8-bit/g=128
 
 model.quantize_model(quant_config=quant_config)
 
