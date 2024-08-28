@@ -18,7 +18,7 @@ cache_dir     = '.'
 model         = AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_dir, torch_dtype=compute_dtype, attn_implementation="sdpa")
 tokenizer     = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_dir)
 
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1)
+quant_config = BaseQuantizeConfig(nbits=4, group_size=64, axis=1)
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, device=device, compute_dtype=compute_dtype)
 
 #Use optimized inference kernels
