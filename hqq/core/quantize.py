@@ -584,7 +584,9 @@ class HQQLinear(nn.Module):
         )
 
         # Core data
-        state = {"W_q": self.W_q} | {k: _encode_type(v) for k, v in self.meta.items()}
+        state = {"W_q": self.W_q}
+        state.update({k: _encode_type(v) for k, v in self.meta.items()})
+
         if self.bias is not None:
             state["bias"] = self.bias
         state["offload_meta"] = _encode_type(self.offload_meta)
