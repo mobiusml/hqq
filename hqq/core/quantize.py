@@ -1002,11 +1002,11 @@ class HQQLinear(nn.Module):
 def hqq_base_quant_config(
     nbits: int = 4,
     group_size: int = 64,
-    quant_zero: bool = True,
+    quant_zero: bool = False,
     quant_scale: bool = False,
     offload_meta: bool = False,  # meta-data should be quantized with the same settings to use offload_meta
     view_as_float: bool = False,
-    axis: int = 0,
+    axis: int = 1,
 ):
     assert (
         nbits in Quantizer.SUPPORTED_BITS
@@ -1024,6 +1024,12 @@ def hqq_base_quant_config(
         "axis": axis,
         "view_as_float": view_as_float,
     }
+
+    if(quant_zero or quant_scale):
+        print(colored('Warning: Quantized meta-data is deprecated and will be removed. It is not supported for quantized model serialization.', 'yellow'))
+
+    if(offload_meta):
+        print(colored('Warning: Meta-data offloading is deprecated and will be removed. It is not supported for quantized model serialization.', 'yellow'))
 
     if offload_meta:
         if quant_scale != quant_zero:
