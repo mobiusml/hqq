@@ -146,6 +146,7 @@ class HQQLinearBitBlas(torch.nn.Module):
     # 	return c
 
     def matmul(self, x: Tensor) -> Tensor:
+        torch.cuda.set_device(self.device)
         return matmul_bitblas(
             x.to(self.device), self.W_q, self.scale, self.zero, self.out_features, self.eng_tag
         )
