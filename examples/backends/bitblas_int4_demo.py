@@ -20,7 +20,7 @@ model        = AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_pa
 
 #Quantize
 #all 4-bit
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1)
+quant_config = BaseQuantizeConfig(nbits=4, group_size=64, axis=1)
 
 #Mixed 4-bit (bitblas) / 2-bit (ATEN)
 # quant_config = {
