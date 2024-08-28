@@ -65,7 +65,7 @@ The quantization parameters are set as follows:
 
 - ```nbits``` (int): supports 8, 4, 3, 2, 1 bits.
 - ```group_size``` (int): no restrictions as long as ```weight.numel()``` is divisible by the ```group_size```.
-- ```view_as_float``` (bool): if True, the quantized parameter is viewed as float instead of a int type.
+- ```view_as_float``` (bool): if True, the quantized parameter is viewed as float instead of an int type.
 
 Setting ```offload_meta=True``` drastically decreases the GPU memory requirements but makes processing slower for smaller group-sizes. When turned on, you can run Llama2-70B and Mixtral with HQQ 2-bit using only 18.8GB and 13GB VRAM respectively.
 
