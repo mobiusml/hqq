@@ -43,7 +43,7 @@ class EgginfoCommand(egg_info):
 
 setup(
     name="hqq",
-    version="0.2.0",
+    version="0.2.1",
     description="Half-Quadratic Quantization (HQQ)",
     url="https://github.com/mobiusml/hqq/",
     author="Dr. Hicham Badri",
