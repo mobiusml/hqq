@@ -199,7 +199,7 @@ class Quantizer:
         if W_q is not None:
             W_q = W_q.to(device).contiguous()
         for key in meta:
-            if type(meta[key]) == torch.Tensor:
+            if isinstance(meta[key], torch.Tensor):
                 meta[key] = (
                     (
                         meta[key].to(compute_dtype)
@@ -220,7 +220,7 @@ class Quantizer:
             W_q_c = None
         meta_c = {}
         for key in meta:
-            if type(meta[key]) == torch.Tensor:
+            if isinstance(meta[key], torch.Tensor):
                 meta_c[key] = (
                     (
                         meta[key].to(compute_dtype)
@@ -370,6 +370,7 @@ class HQQMatmulCachedDeq(torch.autograd.Function):
 
 
 # Main linear layer
+PRINT_ZERO_SCALE_DEPRECATED = True
 class HQQLinear(nn.Module):
     # Default backend
     backend = HQQBackend.PYTORCH
@@ -415,7 +416,14 @@ class HQQLinear(nn.Module):
         return False if (None in [self.W_q, self.meta]) else True
 
     def initialize(self):
+        global PRINT_ZERO_SCALE_DEPRECATED
         if self.linear_layer is not None:
+            if(self.quant_config['scale_quant_params'] is not None or self.quant_config['zero_quant_params'] is not None):
+                if(PRINT_ZERO_SCALE_DEPRECATED):
+                    print(colored('Warning: Quantizing zeros/scales is deprecated. This setting will be ignored.'  , 'yellow'))
+                    PRINT_ZERO_SCALE_DEPRECATED = False
+                self.quant_config['scale_quant_params'] = None
+                self.quant_config['zero_quant_params'] = None
             self.quantize(self.linear_layer.weight.data, **self.quant_config)
             self.bias = (
                 None
@@ -478,7 +486,7 @@ class HQQLinear(nn.Module):
     def cuda(self, device):
         self.meta["compute_dtype"] = self.compute_dtype
 
-        if type(self.W_q) == nn.parameter.Parameter:
+        if isinstance(self.W_q, nn.parameter.Parameter):
             self.W_q.data, self.meta = Quantizer.cuda(self.W_q.data, self.meta, device)
         else:
             self.W_q, self.meta = Quantizer.cuda(self.W_q, self.meta, device)
