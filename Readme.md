@@ -249,7 +249,7 @@ PeftUtils.save_lora_weights(model, filename)
 PeftUtils.load_lora_weights(model, filename)
 ```
 
-We provide a complete example to train a model with HQQ/LoRA that you can find in ```examples/lora/train_hqq_lora_example.py```.
+We provide a complete example to train a model with HQQ/LoRA that you can find in ```examples/lora/hqq_plus.py```.
 
 If you want to use muti-gpu training via FSDP, check out this awesome repo by Answer.AI: https://github.com/AnswerDotAI/fsdp_qlora
 
