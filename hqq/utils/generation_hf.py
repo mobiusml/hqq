@@ -9,24 +9,84 @@ from typing import Union
 from transformers import StaticCache
 from tqdm import tqdm
 
-WARMUP_PROMPTS = ["Write an essay about large language models.",
-                  "Tell me a funny joke!",
-                  "How to make a yummy chocolate cake?",
-                  "Who is Elon Musk?",
-                  "Write a Python code snippet that adds two numbers together.",
-                  ]
+WARMUP_PROMPTS = [
+    "Write an essay about large language models.",
+    "Tell me a funny joke!",
+    "How to make a yummy chocolate cake?",
+    "Who is Elon Musk?",
+    "Write a Python code snippet that adds two numbers together.",
+]
 
+
+# Patches a HuggingFace model to work with torch.compile + static cache
+def patch_model_for_compiled_runtime(
+    model, tokenizer, warmup=True, max_new_tokens=1000
+):
+    model.config.use_cache = True
+    model.generation_config.cache_implementation = "static"
+    model.eval()
+
+    forward_compiled = torch.compile(
+        model.forward, mode="reduce-overhead", fullgraph=True
+    )
+    forward_simple = model.forward
+
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({"pad_token": "<<[PAD]>>"})
+
+    def custom_forward(*args, **kwargs):
+        # Prefill pahse
+        out_fct = forward_simple
+
+        # Decoding pahse
+        if (len(args) > 0 and args[0].shape[-1] == 1) or (
+            "input_ids" in kwargs and kwargs["input_ids"].shape[-1] == 1
+        ):
+            out_fct = forward_compiled
+
+        with torch.backends.cuda.sdp_kernel(
+            enable_flash=True, enable_mem_efficient=False, enable_math=True
+        ):
+            out = out_fct(*args, **kwargs)
+        return out
+
+    model.forward = custom_forward
+
+    # Warm-up
+    if warmup:
+        from tqdm import tqdm
+
+        for prompt in tqdm(WARMUP_PROMPTS):
+            model.generate(
+                **tokenizer(
+                    [
+                        tokenizer.apply_chat_template(
+                            [
+                                {"role": "user", "content": prompt},
+                            ],
+                            tokenize=False,
+                        )
+                    ],
+                    return_tensors="pt",
+                ).to(model.device),
+                max_new_tokens=max_new_tokens,
+                cache_implementation="static",
+                pad_token_id=tokenizer.pad_token_id,
+            )
+
+
+# Custom generator
 class HFGenerator:
     def __init__(
         self,
         model,
         tokenizer,
         max_new_tokens: int = 1000,
-        cache_size: Union[int,None] = None,
+        cache_size: Union[int, None] = None,
         do_sample: bool = False,
         temperature: float = 0.6,
         top_k: int = 5,
-        compile: Union[str,None] = None, #None / "partial" / "full"
+        compile: Union[str, None] = None,  # None / "partial" / "full"
     ):
         super().__init__()
 
@@ -40,7 +100,7 @@ class HFGenerator:
         self.do_sample = do_sample
         self.temperature = temperature if self.do_sample else None
         self.top_k = top_k if self.do_sample else None
-        self.use_cache = True #False
+        self.use_cache = True  # False
 
         if do_sample:
             decode_one_token = self.decode_one_token_sampled
@@ -65,14 +125,16 @@ class HFGenerator:
         if compile == "full":
             self.compile_full()
 
-        if(hasattr(self, 'decode_one_token') is False):
+        if hasattr(self, "decode_one_token") is False:
             self.decode_one_token = decode_one_token
 
-        self.init() #check this: move this before setup_cache?
+        self.init()  # check this: move this before setup_cache?
 
     @torch.no_grad()
     def setup_cache(self):
-        self.past_key_values = StaticCache(self.model.config, 1, self.cache_size, self.model.device, self.model.dtype)
+        self.past_key_values = StaticCache(
+            self.model.config, 1, self.cache_size, self.model.device, self.model.dtype
+        )
 
     @torch.no_grad()
     def reset_cache(self):
@@ -80,25 +142,35 @@ class HFGenerator:
 
     # Ideally only compile this, but it creates issues with generation: https://github.com/huggingface/transformers/issues/30351
     def compile_partial(self, decode_one_token):
-        self.decode_one_token = torch.compile(decode_one_token, **{"mode": "reduce-overhead", "fullgraph": True})
+        self.decode_one_token = torch.compile(
+            decode_one_token, **{"mode": "reduce-overhead", "fullgraph": True}
+        )
         self.is_compiled = True
 
     @torch.inference_mode()
     def compile_full(self):
-        self.model.forward = torch.compile(self.model.forward, mode="reduce-overhead", fullgraph=True)
+        self.model.forward = torch.compile(
+            self.model.forward, mode="reduce-overhead", fullgraph=True
+        )
 
-        with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_mem_efficient=False, enable_math=True):
+        with torch.backends.cuda.sdp_kernel(
+            enable_flash=True, enable_mem_efficient=False, enable_math=True
+        ):
             for ctx_size in [1] * 10:
-                self.model(torch.ones((1, ctx_size), dtype=torch.int32, device=self.model.device), use_cache=False).logits #check this: use_cache=True?
+                self.model(
+                    torch.ones(
+                        (1, ctx_size), dtype=torch.int32, device=self.model.device
+                    ),
+                    use_cache=False,
+                ).logits  # check this: use_cache=True?
         self.is_compiled = True
 
-    #torch.compile needs about 5-10 runs to warmup
+    # torch.compile needs about 5-10 runs to warmup
     def warmup(self):
-        if(self.is_compiled):
+        if self.is_compiled:
             for prompt in WARMUP_PROMPTS:
-                self.generate(prompt, print_tokens=False);
+                self.generate(prompt, print_tokens=False)
         return self
-
 
     def next_multiple(self, val):  # next power of 2
         vals = [2**i for i in range(5, 14)]  # [32, 64, ..., 4096, 8192]
@@ -137,10 +209,18 @@ class HFGenerator:
         idx_next = self.multinomial_sample_one_no_sync(probs)
         return idx_next, probs
 
-    def decode_one_token_no_sample(self, cur_token, input_pos, cache_position, past_key_values, temperature=None, top_k=None):
+    def decode_one_token_no_sample(
+        self,
+        cur_token,
+        input_pos,
+        cache_position,
+        past_key_values,
+        temperature=None,
+        top_k=None,
+    ):
         out = self.model(
             cur_token,
-            #position_ids=input_pos,
+            # position_ids=input_pos,
             cache_position=cache_position,
             past_key_values=past_key_values,
             return_dict=True,
@@ -150,10 +230,18 @@ class HFGenerator:
         new_token = torch.argmax(logits[:, -1], dim=-1)[:, None]
         return new_token
 
-    def decode_one_token_sampled(self, cur_token, input_pos, cache_position, past_key_values, temperature=0.6, top_k=5):
+    def decode_one_token_sampled(
+        self,
+        cur_token,
+        input_pos,
+        cache_position,
+        past_key_values,
+        temperature=0.6,
+        top_k=5,
+    ):
         out = self.model(
             cur_token,
-            #position_ids=input_pos,
+            # position_ids=input_pos,
             cache_position=cache_position,
             past_key_values=past_key_values,
             return_dict=True,
@@ -165,7 +253,7 @@ class HFGenerator:
 
     # Setup cache and variables
     def setup(self, inputs, max_new_tokens):
-        self.reset_cache() 
+        self.reset_cache()
         self.inputs = inputs
         self.batch_size, self.seq_length = self.inputs["input_ids"].shape
         self.cache_position = torch.arange(self.seq_length, device=self.device)
@@ -175,7 +263,9 @@ class HFGenerator:
             dtype=torch.int,
             device=self.device,
         )
-        self.generated_ids[:, self.cache_position] = self.inputs["input_ids"].to(torch.int)
+        self.generated_ids[:, self.cache_position] = self.inputs["input_ids"].to(
+            torch.int
+        )
 
     # Pre-fill phase
     def prefill(self):
@@ -189,13 +279,17 @@ class HFGenerator:
         logits, self.past_key_values = out.logits, out.past_key_values
         next_token = torch.argmax(logits[:, -1], dim=-1)[:, None]
         self.generated_ids[:, self.seq_length] = next_token[:, 0]
-        self.cache_position = torch.tensor([self.seq_length], device=self.device, dtype=torch.long)
+        self.cache_position = torch.tensor(
+            [self.seq_length], device=self.device, dtype=torch.long
+        )
         self.begin_gen_position = self.cache_position.item()
         return next_token
 
     # generate one token at a time
     def gen_next_token(self, next_token):
-        with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_mem_efficient=False, enable_math=True):
+        with torch.backends.cuda.sdp_kernel(
+            enable_flash=True, enable_mem_efficient=False, enable_math=True
+        ):
             next_token = self.decode_one_token(
                 next_token.clone(),
                 None,
@@ -209,13 +303,17 @@ class HFGenerator:
         return next_token
 
     def print_current_token(self, output_text_len):
-        output_text = self.tokenizer.decode(self.generated_ids[0, self.begin_gen_position : self.cache_position + 1])
+        output_text = self.tokenizer.decode(
+            self.generated_ids[0, self.begin_gen_position : self.cache_position + 1]
+        )
         printable_text = output_text[output_text_len:]
         output_text_len = len(output_text)
         print(printable_text, end="", flush=True)
         return output_text_len
 
-    def next_token_iterator(self, next_token, max_new_tokens, verbose, print_tokens, cleanup=True):
+    def next_token_iterator(
+        self, next_token, max_new_tokens, verbose, print_tokens, cleanup=True
+    ):
         output_text, output_text_len = "", 0
         for i in tqdm(range(1, max_new_tokens), disable=(not verbose or print_tokens)):
             next_token = self.gen_next_token(next_token)
@@ -228,9 +326,11 @@ class HFGenerator:
             if print_tokens:
                 output_text_len = self.print_current_token(output_text_len)
 
-        input_tokens  = self.generated_ids[0, : self.begin_gen_position].cpu()
-        output_tokens = self.generated_ids[0, self.begin_gen_position : self.cache_position].cpu()
-        output_text   = self.tokenizer.decode(output_tokens)
+        input_tokens = self.generated_ids[0, : self.begin_gen_position].cpu()
+        output_tokens = self.generated_ids[
+            0, self.begin_gen_position : self.cache_position
+        ].cpu()
+        output_text = self.tokenizer.decode(output_tokens)
 
         if cleanup:
             # model._reset_cache()
@@ -244,14 +344,20 @@ class HFGenerator:
         }
 
     @torch.inference_mode()
-    def generate(self, prompt, use_chat_template=True, verbose=True, print_tokens=False):
+    def generate(
+        self, prompt, use_chat_template=True, verbose=True, print_tokens=False
+    ):
         self.setup(
             inputs=self.tokenize_prompt(prompt, use_chat_template=use_chat_template),
             max_new_tokens=self.max_new_tokens,
         )
-        return self.next_token_iterator(self.prefill(), self.max_new_tokens, verbose, print_tokens)
+        return self.next_token_iterator(
+            self.prefill(), self.max_new_tokens, verbose, print_tokens
+        )
 
-    def generate_(self, prompt, use_chat_template=True, verbose=False, print_tokens=False):
+    def generate_(
+        self, prompt, use_chat_template=True, verbose=False, print_tokens=False
+    ):
         gen_out = self.model.generate(
             **self.tokenize_prompt(prompt, use_chat_template=use_chat_template),
             do_sample=self.do_sample,
@@ -260,7 +366,7 @@ class HFGenerator:
             pad_token_id=self.tokenizer.pad_token_id,
             temperature=self.temperature,
             top_p=self.top_k,
-            #use_cache=False,
+            # use_cache=False,
         )[0]
 
         return {"output_text": self.tokenizer.decode(gen_out), "output_tokens": gen_out}
@@ -277,4 +383,6 @@ class HFGenerator:
 
         self.tokenizer.add_bos_token = False
 
-        return self.tokenizer([prompt], return_tensors="pt", padding=True).to(device=self.model.device)
+        return self.tokenizer([prompt], return_tensors="pt", padding=True).to(
+            device=self.model.device
+        )
