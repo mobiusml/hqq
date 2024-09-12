@@ -72,7 +72,6 @@ class HFGenerator:
 
     @torch.no_grad()
     def setup_cache(self):
-        #self.model._setup_cache(StaticCache, 1, max_cache_len=self.cache_size)
         self.past_key_values = StaticCache(self.model.config, 1, self.cache_size, self.model.device, self.model.dtype)
 
     @torch.no_grad()
@@ -114,7 +113,7 @@ class HFGenerator:
             self.tokenizer.add_special_tokens({"pad_token": "<<[PAD]>>"})
         self.tokenizer.padding_side = "right"
         self.model.eval()
-        #self.model.generation_config.cache_implementation = "static"
+        self.model.generation_config.cache_implementation = "static"
         self.model.config.use_cache = True
 
     # Copied from https://gist.github.com/ArthurZucker/af34221def212259b43d55a2811d2dbb
