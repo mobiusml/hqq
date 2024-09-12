@@ -228,7 +228,8 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
             .contiguous()
         )
 
-        W_q = (W_q[::, ::2] << 4 | W_q[::, 1::2]).to(torch.uint8)
+        if(float(torch.__version__[:3])>=2.5):
+            W_q = (W_q[::, ::2] << 4 | W_q[::, 1::2]).to(torch.uint8)
         #https://github.com/pytorch/pytorch/blob/6f662e95756333284450ff9c3c6e78c796aa6e77/torch/testing/_internal/common_quantization.py#L478-L479
 
         # group_dequantize_tensor_from_qparams
@@ -297,9 +298,9 @@ def patch_linearlayers(model, fct, patch_param=None):
 
 def patch_hqq_to_aoint4(layer, patch_params):
     hqq_layer = None
-    if type(layer) is HQQLinear:
+    if isinstance(layer, HQQLinear):
         hqq_layer = layer
-    if type(layer) is HQQLinearLoRA:
+    if isinstance(layer, HQQLinearLoRA):
         hqq_layer = layer.linear_layer
 
     if hqq_layer is None:
@@ -329,10 +330,10 @@ def patch_hqq_to_aoint4(layer, patch_params):
     del hqq_layer
     torch.cuda.empty_cache()
 
-    if type(layer) is HQQLinear:
+    if isinstance(layer, HQQLinear):
         return hqq_aoint4_layer
 
-    if type(layer) is HQQLinearLoRA:
+    if isinstance(layer, HQQLinearLoRA):
         layer.linear_layer = hqq_aoint4_layer
 
     return layer
@@ -346,9 +347,9 @@ def replace_with_torchInt4(model):
 # Force requantize, mainly to check if the padding with int4mm is faster
 def patch_hqq_to_aoint4_force_requantize(layer, patch_params):
     hqq_layer = None
-    if type(layer) is HQQLinear:
+    if isinstance(layer, HQQLinear):
         hqq_layer = layer
-    if type(layer) is HQQLinearLoRA:
+    if isinstance(layer, HQQLinearLoRA):
         hqq_layer = layer.linear_layer
 
     if hqq_layer is None:
@@ -383,10 +384,10 @@ def patch_hqq_to_aoint4_force_requantize(layer, patch_params):
     del hqq_layer
     torch.cuda.empty_cache()
 
-    if type(layer) is HQQLinear:
+    if isinstance(layer, HQQLinear):
         return hqq_aoint4_layer
 
-    if type(layer) is HQQLinearLoRA:
+    if isinstance(layer, HQQLinearLoRA):
         layer.linear_layer = hqq_aoint4_layer
 
     return layer

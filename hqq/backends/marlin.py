@@ -2,7 +2,8 @@
 #####################################################
 import torch
 import marlin
-from ..core.quantize import Quantizer
+from ..core.quantize import HQQLinear, Quantizer
+from ..core.peft import HQQLinearLoRA
 
 class MarlinLinear(torch.nn.Module):
     def __init__(
@@ -68,10 +69,15 @@ class MarlinLinear(torch.nn.Module):
 
         return out
 
-
 # ONLY WORKS WITH AXIS=1, group_size= - 1
 def patch_hqq_to_marlin(layer, patch_params):
-    if marlin is None:
+    hqq_layer = None
+    if type(layer) is HQQLinear:
+        hqq_layer = layer
+    if type(layer) is HQQLinearLoRA:
+        hqq_layer = layer.linear_layer
+
+    if hqq_layer is None:
         return layer
 
     z_shift = 8.0
@@ -86,14 +92,12 @@ def patch_hqq_to_marlin(layer, patch_params):
         print("Skipping marlin conversion for", hqq_layer.name)
         return layer
 
-    W_r = Quantizer.unpack[hqq_layer.meta["packing"]](
-        hqq_layer.W_q, dtype=hqq_layer.compute_dtype
-    ).t()
+    W_r = hqq_layer.unpack(dtype=hqq_layer.compute_dtype).t()
     z = hqq_layer.meta["zero"]
     s = hqq_layer.meta["scale"].t()
     W_r = (W_r - z_shift) * s
 
-    if type(z) in [torch.Tensor, torch.nn.Parameter]:
+    if isinstance(z, (torch.Tensor, torch.nn.Parameter)):
         z = z.t()
         u = (s * (-z + z_shift)).view([1, -1])
     else:
@@ -101,17 +105,19 @@ def patch_hqq_to_marlin(layer, patch_params):
 
     marlin_layer = MarlinLinear(W_r, s, u=u, bias=hqq_layer.bias)
 
-    if hasattr(layer, "linear_layer"):
-        del layer.linear_layer.W_q
-        del layer.linear_layer.meta
-        del layer.linear_layer
+    del hqq_layer.W_q
+    del hqq_layer.meta
+    del hqq_layer.bias
+    del hqq_layer
+    torch.cuda.empty_cache()
+
+    if isinstance(layer, HQQLinear):
+        return marlin_layer
+
+    if isinstance(layer, HQQLinearLoRA):
         layer.linear_layer = marlin_layer
-    else:
-        del hqq_layer.W_q
-        del hqq_layer.meta
-        del hqq_layer
-        layer = marlin_layer
 
     torch.cuda.empty_cache()
 
     return layer
+

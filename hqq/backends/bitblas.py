@@ -146,7 +146,7 @@ class HQQLinearBitBlas(torch.nn.Module):
     # 	return c
 
     def matmul(self, x: Tensor) -> Tensor:
-        torch.cuda.set_device(self.device)
+        #torch.cuda.set_device(self.device) #Need this with multi-gpu but it breaks with torch.compile
         return matmul_bitblas(
             x.to(self.device), self.W_q, self.scale, self.zero, self.out_features, self.eng_tag
         )
@@ -175,9 +175,9 @@ def patch_linearlayers(model, fct, patch_param=None):
 
 def patch_hqq_to_bitblas(layer, patch_params):
     hqq_layer = None
-    if type(layer) is HQQLinear:
+    if isinstance(layer, HQQLinear):
         hqq_layer = layer
-    if type(layer) is HQQLinearLoRA:
+    if isinstance(layer, HQQLinearLoRA):
         hqq_layer = layer.linear_layer
 
     if hqq_layer is None:
@@ -195,10 +195,10 @@ def patch_hqq_to_bitblas(layer, patch_params):
     del hqq_layer
     torch.cuda.empty_cache()
 
-    if type(layer) is HQQLinear:
+    if isinstance(layer, HQQLinear):
         return hqq_bitblas_layer
 
-    if type(layer) is HQQLinearLoRA:
+    if isinstance(layer, HQQLinearLoRA):
         layer.linear_layer = hqq_bitblas_layer
 
     return layer
