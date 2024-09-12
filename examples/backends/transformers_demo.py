@@ -4,7 +4,7 @@
 ########################################################################
 import torch
 device        = 'cuda:0'
-backend       = None #'torchao_int4' #"torchao_int4" (4-bit only) or "bitblas" (4-bit + 2-bit)
+backend       = 'torchao_int4' #"torchao_int4" (4-bit only) or "bitblas" (4-bit + 2-bit)
 compute_dtype = torch.float16 if backend=="bitblas" else torch.bfloat16
 cache_dir     = '.' 
 model_id      = 'meta-llama/Meta-Llama-3-8B-Instruct'
@@ -32,8 +32,8 @@ prepare_for_inference(model, backend=backend, verbose=True)
 
 ########################################################################
 #Inference
-#from hqq.utils.generation_hf import patch_model_for_compiled_runtime
-#patch_model_for_compiled_runtime(model, tokenizer, warmup=True) #This is currently breaking
+from hqq.utils.generation_hf import patch_model_for_compiled_runtime
+patch_model_for_compiled_runtime(model, tokenizer, warmup=True) 
 
 prompt = "Write an essay about large language models."
 

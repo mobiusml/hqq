@@ -18,10 +18,43 @@ WARMUP_PROMPTS = [
 ]
 
 
+
+#The original function from accelerate breaks with torch.compile, this is a hacky fix
+def patch_accelerate_device_hook():
+    #https://github.com/huggingface/accelerate/blob/main/src/accelerate/utils/operations.py#L136
+    import accelerate.utils.operations as ops 
+    from typing import Mapping
+    def _send_to_device(tensor, device,  non_blocking=False, skip_keys=None):
+        if(isinstance(tensor, tuple)):
+            return tuple(t.to(device) for t in tensor)
+        if(isinstance(tensor, list)):
+            return [t.to(device) for t in tensor]
+        if(isinstance(tensor, Mapping)):
+            if isinstance(skip_keys, str):
+                skip_keys = [skip_keys]
+            elif skip_keys is None:
+                skip_keys = []
+            return type(tensor)(
+                {
+                    k: t if k in skip_keys else _send_to_device(t, device, non_blocking=non_blocking, skip_keys=skip_keys)
+                    for k, t in tensor.items()
+                }
+            )
+        if(isinstance(tensor, (torch.Tensor, torch.nn.Parameter))):
+            return tensor.to(device)
+        else:
+            return tensor
+
+    ops.send_to_device = _send_to_device
+
+
 # Patches a HuggingFace model to work with torch.compile + static cache
 def patch_model_for_compiled_runtime(
-    model, tokenizer, warmup=True, max_new_tokens=1000
-):
+    model, tokenizer, warmup=True, max_new_tokens=1000, patch_accelerate=True
+):  
+    if(patch_accelerate):
+        patch_accelerate_device_hook()
+
     model.config.use_cache = True
     model.generation_config.cache_implementation = "static"
     model.eval()
