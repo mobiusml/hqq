@@ -24,7 +24,6 @@ tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_path)
 #Quantize the model
 from hqq.core.quantize import *
 quant_config = BaseQuantizeConfig(nbits=2, group_size=8, quant_scale=False, quant_zero=False, axis=0)
-AutoHQQHFModel.setup_model(model)
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
 #Add Peft
