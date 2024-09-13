@@ -371,6 +371,7 @@ class HQQMatmulCachedDeq(torch.autograd.Function):
 
 # Main linear layer
 PRINT_ZERO_SCALE_DEPRECATED = True
+PRINT_ATEN_WARNING = True
 class HQQLinear(nn.Module):
     # Default backend
     backend = HQQBackend.PYTORCH
@@ -470,15 +471,17 @@ class HQQLinear(nn.Module):
     # Set backends
     @classmethod
     def set_backend(cls, backend: HQQBackend):
-        if "aten" in backend.value:
+        global PRINT_ATEN_WARNING
+        if "aten" in backend.value and PRINT_ATEN_WARNING:
             if hqq_aten_is_available is False:
                 print(
-                    "ATEN/CUDA backend not availabe. Make sure you install the hqq_aten library."
+                    colored("ATEN/CUDA backend not availabe. Make sure you install the hqq_aten library.", "yellow")
                 )
                 return
             print(
-                "Warning: the ATEN/CUDA backend only supports axis=0 and GPU runtime."
+                colored("Warning: the ATEN/CUDA backend only supports axis=0 and GPU runtime.", "yellow")
             )
+            PRINT_ATEN_WARNING = False
         HQQLinear.backend = backend
         cls.forward = getattr(cls, backend.value)
 
