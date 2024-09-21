@@ -44,6 +44,16 @@ To get the latest version, you can install the core library directly via ```pip 
 
 Alternatively, clone the repo and run ```pip install .``` from this current folder. 
 
+Alternatively, clone the repo and run ```pip install .``` from this current folder. 
+
+To use `HQQBackend.ATEN` you also need to run one of these:  
+```
+python {hqq installation path}/kernels/setup_cuda.py install
+```  
+```
+python {hqq installation path}/kernels/setup_torch.py install
+```
+
 ### Basic Usage
 To perform quantization with HQQ, you simply need to replace the linear layers ( ```torch.nn.Linear```) as follows:
 ```Python
