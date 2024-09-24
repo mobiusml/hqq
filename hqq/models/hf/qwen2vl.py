@@ -8,7 +8,7 @@ from typing import Union
 from transformers import Qwen2VLForConditionalGeneration
 from transformers.models.qwen2_vl.modeling_qwen2_vl import (
     VisionRotaryEmbedding,
-    Qwen2RotaryEmbedding,
+    Qwen2VLRotaryEmbedding,
 )
 
 # #Usage
