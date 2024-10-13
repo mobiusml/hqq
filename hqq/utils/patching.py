@@ -19,6 +19,13 @@ except Exception:
     patch_hqq_to_bitblas = None
     print(colored('Warning: failed to import the BitBlas backend. Check if BitBlas is correctly installed if you want to use the bitblas backend (https://github.com/microsoft/BitBLAS).','yellow'))
 
+try:
+    from ..backends.gemlite import patch_hqq_to_gemlite
+except Exception:
+    patch_hqq_to_gemlite = None
+    print(colored('Warning: failed to import the GemLite backend. Check if GemLite is correctly installed if you want to use the gemlite backend (https://github.com/mobiusml/gemlite/).','yellow'))
+
+
 def patch_linearlayers(model, fct, patch_param=None, verbose=False):
     base_class = model.base_class if (hasattr(model, "base_class")) else AutoHQQHFModel
     base_class.setup_model(model)
@@ -109,22 +116,22 @@ def prepare_for_inference(model, allow_merge=False, backend="default", verbose=F
     patch_linearlayers(model, patch_lora_inference)
     cleanup()
 
+    if backend == "gemlite" and (patch_hqq_to_gemlite is not None):
+        patch_linearlayers(model, patch_hqq_to_gemlite, verbose=verbose)
     if backend == "bitblas" and (patch_hqq_to_bitblas is not None):
         patch_linearlayers(model, patch_hqq_to_bitblas, verbose=verbose)
-        cleanup()
     if backend == "torchao_int4":
         patch_linearlayers(model, patch_hqq_to_aoint4, verbose=verbose)
         recommended_inductor_config_setter()
-        cleanup()
     if allow_merge:  # only compatible with symmetric quant kernels
         patch_linearlayers(
             model, patch_merge_zeros_with_lora, {"z_shift": 8, "keep_lora": False},
             verbose=verbose,
-        )
-        cleanup()
+        )       
     if backend == "marlin" and (patch_hqq_to_marlin is not None):
         patch_linearlayers(model, patch_hqq_to_marlin, verbose=verbose)
-        cleanup()
+
+    cleanup()
 
     patch_linearlayers(
         model, patch_add_weight_param, {"device": model.device, "dtype": model.dtype}
