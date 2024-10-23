@@ -33,7 +33,7 @@ def patch_hqq_to_gemlite(layer, patch_params):
     )
 
     orig_shape = hqq_layer.meta["shape"]
-    W_q = hqq_layer.unpack().view(orig_shape)
+    W_q = hqq_layer.unpack(dtype=torch.uint8).view(orig_shape)
     scales = hqq_layer.meta["scale"].clone()
     zeros = hqq_layer.meta["zero"].clone()
     gemlite_linear.pack(W_q, scales, zeros, None)
