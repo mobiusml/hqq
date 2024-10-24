@@ -77,7 +77,7 @@ def patch_model_for_compiled_runtime(
             "input_ids" in kwargs and kwargs["input_ids"].shape[-1] == 1
         ):
             out_fct = forward_compiled
-        with sdpa_kernel([SDPBackend.MATH, SDPBackend.FLASH_ATTENTION]):
+        with sdpa_kernel([SDPBackend.MATH]):
             out = out_fct(*args, **kwargs)
         return out
 
@@ -184,7 +184,7 @@ class HFGenerator:
             self.model.forward, mode="reduce-overhead", fullgraph=True
         )
 
-        with sdpa_kernel([SDPBackend.MATH, SDPBackend.FLASH_ATTENTION]):
+        with sdpa_kernel([SDPBackend.MATH]):
             for ctx_size in [1] * 10:
                 self.model(
                     torch.ones(
@@ -316,7 +316,7 @@ class HFGenerator:
 
     # generate one token at a time
     def gen_next_token(self, next_token):
-        with sdpa_kernel([SDPBackend.MATH, SDPBackend.FLASH_ATTENTION]):
+        with sdpa_kernel([SDPBackend.MATH]):
             next_token = self.decode_one_token(
                 next_token.clone(),
                 None,
