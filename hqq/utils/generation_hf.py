@@ -5,6 +5,7 @@
 # https://gist.github.com/ArthurZucker/5dc54a3fb443e979fac437e5df7c800b
 
 import torch
+from torch.nn.attention import sdpa_kernel, SDPBackend
 from typing import Union
 from transformers import StaticCache
 from tqdm import tqdm
@@ -76,10 +77,7 @@ def patch_model_for_compiled_runtime(
             "input_ids" in kwargs and kwargs["input_ids"].shape[-1] == 1
         ):
             out_fct = forward_compiled
-
-        with torch.backends.cuda.sdp_kernel(
-            enable_flash=True, enable_mem_efficient=False, enable_math=True
-        ):
+        with sdpa_kernel([SDPBackend.MATH, SDPBackend.FLASH_ATTENTION]):
             out = out_fct(*args, **kwargs)
         return out
 
@@ -186,9 +184,7 @@ class HFGenerator:
             self.model.forward, mode="reduce-overhead", fullgraph=True
         )
 
-        with torch.backends.cuda.sdp_kernel(
-            enable_flash=True, enable_mem_efficient=False, enable_math=True
-        ):
+        with sdpa_kernel([SDPBackend.MATH, SDPBackend.FLASH_ATTENTION]):
             for ctx_size in [1] * 10:
                 self.model(
                     torch.ones(
@@ -320,9 +316,7 @@ class HFGenerator:
 
     # generate one token at a time
     def gen_next_token(self, next_token):
-        with torch.backends.cuda.sdp_kernel(
-            enable_flash=True, enable_mem_efficient=False, enable_math=True
-        ):
+        with sdpa_kernel([SDPBackend.MATH, SDPBackend.FLASH_ATTENTION]):
             next_token = self.decode_one_token(
                 next_token.clone(),
                 None,

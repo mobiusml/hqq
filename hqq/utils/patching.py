@@ -12,19 +12,15 @@ try:
     from ..backends.marlin import patch_hqq_to_marlin
 except Exception:
         patch_hqq_to_marlin = None
-        print(colored('Warning: failed to import the Marlin backend. Check if marlin is correctly installed if you want to use the Marlin backend (https://github.com/IST-DASLab/marlin).', 'yellow'))
 try:
     from ..backends.bitblas import patch_hqq_to_bitblas
 except Exception:
     patch_hqq_to_bitblas = None
-    print(colored('Warning: failed to import the BitBlas backend. Check if BitBlas is correctly installed if you want to use the bitblas backend (https://github.com/microsoft/BitBLAS).','yellow'))
 
 try:
     from ..backends.gemlite import patch_hqq_to_gemlite
 except Exception:
     patch_hqq_to_gemlite = None
-    print(colored('Warning: failed to import the GemLite backend. Check if GemLite is correctly installed if you want to use the gemlite backend (https://github.com/mobiusml/gemlite/).','yellow'))
-
 
 def patch_linearlayers(model, fct, patch_param=None, verbose=False):
     base_class = model.base_class if (hasattr(model, "base_class")) else AutoHQQHFModel
@@ -117,9 +113,15 @@ def prepare_for_inference(model, allow_merge=False, backend="default", verbose=F
     cleanup()
 
     if backend == "gemlite" and (patch_hqq_to_gemlite is not None):
-        patch_linearlayers(model, patch_hqq_to_gemlite, verbose=verbose)
-    if backend == "bitblas" and (patch_hqq_to_bitblas is not None):
-        patch_linearlayers(model, patch_hqq_to_bitblas, verbose=verbose)
+        if patch_hqq_to_gemlite is None:
+            raise RunTimeError('GemLite backend is not available. Check if gemlite is correctly installed if you want to use the GemLite backend (https://github.com/mobiusml/gemlite/).')
+        else:
+            patch_linearlayers(model, patch_hqq_to_gemlite, verbose=verbose)
+    if backend == "bitblas":
+        if patch_hqq_to_bitblas is None:
+            raise RunTimeError('BitBlas backend is not available. Check if bitblas is correctly installed if you want to use the BitBlas backend (https://github.com/mobiusml/bitblas/).')
+        else:
+            patch_linearlayers(model, patch_hqq_to_bitblas, verbose=verbose)
     if backend == "torchao_int4":
         patch_linearlayers(model, patch_hqq_to_aoint4, verbose=verbose)
         recommended_inductor_config_setter()
@@ -128,8 +130,11 @@ def prepare_for_inference(model, allow_merge=False, backend="default", verbose=F
             model, patch_merge_zeros_with_lora, {"z_shift": 8, "keep_lora": False},
             verbose=verbose,
         )       
-    if backend == "marlin" and (patch_hqq_to_marlin is not None):
-        patch_linearlayers(model, patch_hqq_to_marlin, verbose=verbose)
+    if backend == "marlin":
+        if patch_hqq_to_bitblas is None:
+            raise RunTimeError('Marlin backend is not available. Check if marlin is correctly installed if you want to use the Marlin backend (https://github.com/IST-DASLab/marlin).')
+        else:
+            patch_linearlayers(model, patch_hqq_to_marlin, verbose=verbose)
 
     cleanup()
 
