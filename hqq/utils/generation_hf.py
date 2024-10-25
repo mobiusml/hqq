@@ -59,6 +59,8 @@ def patch_model_for_compiled_runtime(
     model.config.use_cache = True
     model.generation_config.cache_implementation = "static"
     model.eval()
+    
+    torch._dynamo.config.inline_inbuilt_nn_modules = False #torch 2.5.0 fix
 
     forward_compiled = torch.compile(
         model.forward, mode="reduce-overhead", fullgraph=True
@@ -124,6 +126,7 @@ class HFGenerator:
         torch._dynamo.config.cache_size_limit = 64
         torch._dynamo.config.capture_scalar_outputs = True
         torch._inductor.config.fx_graph_cache = True
+        torch._dynamo.config.inline_inbuilt_nn_modules = False #torch 2.5.0 fix
 
         self.model = model
         self.tokenizer = tokenizer
