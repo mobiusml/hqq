@@ -41,8 +41,16 @@ from hqq.utils.generation_hf import patch_model_for_compiled_runtime
 
 patch_model_for_compiled_runtime(model, tokenizer, warmup=True)
 
-prompt = "Write an essay about large language models."
+# Prompt
+system_prompt = None #"You are a helpful assistant."
+prompt        = "Write an essay about large language models."
 
-inputs = tokenizer([tokenizer.apply_chat_template([{"role": "user", "content": prompt},], tokenize=False)], return_tensors="pt").to(model.device)
+messages  = [] if(system_prompt is None) else [{"role": "system", "content": system_prompt}]
+messages += [{"role": "user", "content": prompt},]
+
+inputs = tokenizer([tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)],return_tensors="pt").to(model.device)
+
+# Generate
 outputs = model.generate(**inputs, max_new_tokens=1000, cache_implementation="static", pad_token_id=tokenizer.pad_token_id) 
 #print(tokenizer.decode(outputs[0]))
+
