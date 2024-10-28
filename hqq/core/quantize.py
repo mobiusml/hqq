@@ -653,34 +653,28 @@ class HQQLinear(nn.Module):
                 kwargs["destination"][kwargs["prefix"] + key] = value
         return state
 
-    # def _load_from_state_dict(
-    #     self,
-    #     state_dict,
-    #     prefix,
-    #     local_metadata,
-    #     strict,
-    #     missing_keys,
-    #     unexpected_keys,
-    #     error_msgs,
-    # ):
-    #     W_q_key = prefix + "W_q"
-    #     meta_key = prefix + "meta"
-    #     bias_key = prefix + "bias"
 
-    #     if W_q_key not in state_dict:
-    #         missing_keys.append(W_q_key)
-    #     if meta_key not in state_dict:
-    #         missing_keys.append(meta_key)
-    #     if missing_keys:
-    #         return  # Can't load weights if either weight or meta is missing
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        
+        #Load the rest of HQQLinear
+        layer_state_dict = {}
+        for key in self.state_dict_keys():
+            if(prefix + key in state_dict):
+                layer_state_dict[key] = state_dict.pop(prefix + key)
+            else:
+                if(key not in ['bias']):
+                    missing_keys.append(prefix + key)
 
-    #     W_q = nn.Parameter(state_dict.pop(W_q_key), requires_grad=False)
-    #     meta = state_dict.pop(meta_key)
-    #     bias = state_dict.pop(bias_key, None)
-
-    #     unexpected_keys += state_dict.keys()
-
-    #     self.load_state_dict({"W_q": W_q, "meta": meta, "bias": bias}, strict)
+        self.load_state_dict(layer_state_dict, strict=strict)
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
         if "encoded_state_dict" in state_dict:
