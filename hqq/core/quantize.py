@@ -665,7 +665,6 @@ class HQQLinear(nn.Module):
         error_msgs,
     ):
         
-        #Load the rest of HQQLinear
         layer_state_dict = {}
         for key in self.state_dict_keys():
             if(prefix + key in state_dict):
@@ -673,6 +672,8 @@ class HQQLinear(nn.Module):
             else:
                 if(key not in ['bias']):
                     missing_keys.append(prefix + key)
+                    
+        layer_state_dict['W_q'] = nn.Parameter(layer_state_dict['W_q'], requires_grad=False)
 
         self.load_state_dict(layer_state_dict, strict=strict)
 
