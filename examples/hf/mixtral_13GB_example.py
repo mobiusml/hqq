@@ -6,29 +6,19 @@
 ################################################################################################
 
 import torch
-from hqq.engine.hf import HQQModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from hqq.models.hf.base import AutoHQQHFModel
 model_id   = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 cache_path = '.'
-model      = HQQModelForCausalLM.from_pretrained(model_id, cache_dir=cache_path, torch_dtype=torch.float16, attn_implementation="flash_attention_2")
-tokenizer  = AutoTokenizer.from_pretrained(model_id,       cache_dir=cache_path) 
+compute_dtype = torch.bfloat16
+model      = AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_path, torch_dtype=compute_dtype, attn_implementation="flash_attention_2")
+tokenizer  = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_path) 
 
 #Quantize params
 from hqq.core.quantize import *
 
-# #Mixtral-8x7B-Instruct-v0.1-hf-attn-4bit-moe-2bit-metaoffload-HQQ ~13.5GB
-# attn_prams     = BaseQuantizeConfig(nbits=4, group_size=64, offload_meta=True) 
-# experts_params = BaseQuantizeConfig(nbits=2, group_size=16, offload_meta=True) 
-# zero_scale_group_size = 128
-
-#Mixtral-8x7B-Instruct-v0.1-hf-attn-4bit-moe-2bitgs8-metaoffload-HQQ ~13.6GB
-attn_prams     = BaseQuantizeConfig(nbits=4, group_size=64, offload_meta=True) 
-experts_params = BaseQuantizeConfig(nbits=2, group_size=8, offload_meta=True) 
-zero_scale_group_size = 128 
-
-# #Mixtral-8x7B-Instruct-v0.1-hf-attn-4bit-moe-3bit-metaoffload-HQQ ~22.3GB
-# attn_prams     = BaseQuantizeConfig(nbits=4, group_size=64, offload_meta=True) 
-# experts_params = BaseQuantizeConfig(nbits=3, group_size=64, offload_meta=True) 
-# zero_scale_group_size = 128
+attn_prams     = BaseQuantizeConfig(nbits=4, group_size=128, axis=1) 
+experts_params = BaseQuantizeConfig(nbits=3, group_size=64, axis=0) 
 
 quant_config = {}
 #Attention
@@ -42,18 +32,20 @@ quant_config['block_sparse_moe.experts.w2'] = experts_params
 quant_config['block_sparse_moe.experts.w3'] = experts_params
 
 #Quantize
-model.quantize_model(quant_config=quant_config, compute_dtype=torch.float16)
+AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 model.eval();
 
 ################################################################################################
 #Set backend
-HQQLinear.set_backend(HQQBackend.ATEN)
-model = torch.compile(model)
+from hqq.utils.patching import prepare_for_inference
+prepare_for_inference(model, backend="torchao_int4", verbose=True)
+
+HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)
 
 #Warmup 
 for i in range(10):
     with torch.no_grad():
-        out = model(torch.ones((1, 1024), dtype=torch.int32, device='cuda'))
+        out = model(torch.ones((1, 1), dtype=torch.int32, device='cuda'))
 del out 
 cleanup()
 
