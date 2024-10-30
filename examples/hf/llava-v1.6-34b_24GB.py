@@ -17,21 +17,12 @@ tokenizer = processor.tokenizer
 model     = transformers.LlavaNextForConditionalGeneration.from_pretrained(model_id, torch_dtype=compute_dtype, attn_implementation=attn_imp)
 
 #Quantize and offload to GPU
+from hqq.models.hf.base import AutoHQQHFModel
 from hqq.core.quantize import *
-from hqq.models.hf.llama import LlamaHQQ
 
-############################################################
-#Faster and better quality | Runtime VRAM ~25GB
-#quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_zero=False, quant_scale=False, offload_meta=False) 
-
-#Designed to fit a 24GB    | Runtime VRAM ~23.4GB
-quant_config = BaseQuantizeConfig(nbits=4, group_size=64, quant_zero=True, quant_scale=True, offload_meta=True) 
-quant_config['scale_quant_params']['group_size'] = 64
-quant_config['zero_quant_params']['group_size']  = 64
-
-############################################################
+quant_config = BaseQuantizeConfig(nbits=4, group_size=64, axis=1) 
 #Quantize the language model
-LlamaHQQ.quantize_model(model.language_model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
+AutoHQQHFModel.quantize_model(model.language_model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
 #Move the rest of the model
 model.vision_tower          = model.vision_tower.to(device=device, dtype=compute_dtype)
