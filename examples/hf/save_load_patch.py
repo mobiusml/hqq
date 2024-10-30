@@ -31,7 +31,7 @@ compute_dtype = torch.bfloat16
 # )
 
 #hqq lib
-quant_config  = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1)
+quant_config  = BaseQuantizeConfig(nbits=4, group_size=64, axis=1)
 model         = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=compute_dtype, cache_dir=cache_dir)
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 ###################################
@@ -62,15 +62,12 @@ tokenizer = AutoTokenizer.from_pretrained(save_path)
 
 #Since we are working with a saved model, we need to specify the quant_config of each layer. You don't need this if you quantize on-the-fly.
 from hqq.utils.patching import patch_linearlayers, patch_add_quant_config
-quant_config  = BaseQuantizeConfig(nbits=4, group_size=64, quant_scale=False, quant_zero=False, axis=1) 
+quant_config  = BaseQuantizeConfig(nbits=4, group_size=64, axis=1) 
 patch_linearlayers(model, patch_add_quant_config, quant_config)
 
 # Inferece
 from hqq.utils.patching import prepare_for_inference
 from hqq.utils.generation_hf import HFGenerator
-
-#Set backend: use HQQBackend.ATEN for axis=0, but doesn't work with torchao or marlin kernels
-HQQLinear.set_backend(HQQBackend.PYTORCH) 
 
 #Patch 
 prepare_for_inference(model, backend="torchao_int4")
