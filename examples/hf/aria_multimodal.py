@@ -91,7 +91,9 @@ prepare_for_inference(model.language_model, backend=backend, verbose=True)
 #     _ = model(torch.randint(0, 1000, (1,1), device=device, dtype=torch.int32))
 
 
-#TODO: add torch.compile
+#Add torch.compile
+#from hqq.utils.generation_hf import patch_model_for_compiled_runtime
+#patch_model_for_compiled_runtime(model.language, processor.tokenizer, warmup=True)
 ########################################################################################
 import requests
 from PIL import Image
