@@ -22,6 +22,7 @@ from hqq.core.quantize import *
 
 #Load
 processor = AutoProcessor.from_pretrained(model_id, cache_dir=cache_dir, trust_remote_code=True)
+#model = AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_dir, torch_dtype=compute_dtype, device_map=device, attn_implementation="flash_attention_2", trust_remote_code=True)
 
 #Quantize
 model = AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_dir, torch_dtype=compute_dtype, attn_implementation="flash_attention_2", trust_remote_code=True)
@@ -62,9 +63,8 @@ class HQQGroupedGemm(torch.nn.Module):
         for expert_num in range(self.num_experts):
             start  = cumsum_num_tokens[expert_num]
             end    = cumsum_num_tokens[expert_num + 1]
-            if(start == end): continue
-
-            output[start:end] = self.hqq_layers[expert_num](input[start:end])
+            if(end > start): 
+                output[start:end] = self.hqq_layers[expert_num](input[start:end])
 
         return output
 
@@ -86,40 +86,108 @@ from hqq.utils.patching import prepare_for_inference
 HQQLinear.set_backend(HQQBackend.ATEN if experts_quant_config['weight_quant_params']['axis'] == 0 else HQQBackend.PYTORCH_COMPILE)
 prepare_for_inference(model.language_model, backend=backend, verbose=True)
 ########################################################################################
-#Test language model
+
+# import requests
+# from PIL import Image
+
+# def generate(img_path, prompt):
+
+#     image = Image.open(requests.get(img_path, stream=True).raw)
+
+#     messages = [
+#         {
+#             "role": "user",
+#             "content": [
+#                 {"text": None, "type": "image"},
+#                 {"text": prompt, "type": "text"},
+#             ],
+#         }
+#     ]
+
+#     text   = processor.apply_chat_template(messages, add_generation_prompt=True)
+#     inputs = processor(text=text, images=image, return_tensors="pt")
+#     inputs["pixel_values"] = inputs["pixel_values"].to(model.dtype)
+#     inputs = {k: v.to(model.device) for k, v in inputs.items()}
+
+#     with torch.inference_mode():
+#         output     = model.generate(**inputs, max_new_tokens=500, stop_strings=["<|im_end|>"], tokenizer=processor.tokenizer, do_sample=True, temperature=0.9)
+#         output_ids = output[0][inputs["input_ids"].shape[1]:]
+#         result     = processor.decode(output_ids, skip_special_tokens=True)
+
+#     return result
+
+# ########################################################################################
+# #Torch.compile
+# from hqq.utils.generation_hf import WARMUP_PROMPTS, patch_accelerate_device_hook
+# from torch.nn.attention import sdpa_kernel, SDPBackend
+# def patch_model_for_compiled_runtime(
+#     model, tokenizer, warmup=True, max_new_tokens=1000, patch_accelerate=True
+# ):  
+#     if(patch_accelerate):
+#         patch_accelerate_device_hook()
+
+#     model.config.use_cache = True
+#     #model.generation_config.cache_implementation = "static"
+#     model.eval()
+    
+#     torch._dynamo.config.inline_inbuilt_nn_modules = False #torch 2.5.0 fix
+
+#     #forward_compiled = torch.compile(model.forward, mode="reduce-overhead", fullgraph=True)
+#     forward_compiled = torch.compile(model.forward, mode="max-autotune-no-cudagraphs")
+#     forward_simple = model.forward
+
+#     if tokenizer.pad_token is None:
+#         tokenizer.add_special_tokens({"pad_token": "<<[PAD]>>"})
+
+#     def custom_forward(*args, **kwargs):
+#         # Prefill pahse
+#         out_fct = forward_simple
+
+#         # Decoding pahse
+#         if (len(args) > 0 and args[0].shape[-1] == 1) or (
+#             "input_ids" in kwargs and kwargs["input_ids"].shape[-1] == 1
+#         ):
+#             out_fct = forward_compiled
+#         with sdpa_kernel([SDPBackend.MATH]):
+#             out = out_fct(*args, **kwargs)
+#         return out
+
+#     model.forward = custom_forward
+
+#     # Warm-up
+#     if warmup:
+#         from tqdm import tqdm
+
+#         for prompt in tqdm(WARMUP_PROMPTS):
+#             model.generate(
+#                 **tokenizer(
+#                     [
+#                         tokenizer.apply_chat_template(
+#                             [
+#                                 {"role": "user", "content": prompt},
+#                             ],
+#                             tokenize=False,
+#                         )
+#                     ],
+#                     return_tensors="pt",
+#                 ).to(model.device),
+#                 max_new_tokens=max_new_tokens,
+#                 #cache_implementation="static",
+#                 pad_token_id=tokenizer.pad_token_id,
+#             )
+
+# #Add torch.compile
+# #model.language_model.forward = torch.compile(model.language_model.forward, mode='max-autotune-no-cudagraphs')
+# patch_model_for_compiled_runtime(model.language_model, processor.tokenizer, warmup=False)
+
+# #model.multi_modal_projector.forward = torch.compile(model.multi_modal_projector.forward, mode='reduce-overhead', fullgraph=True)
+# #model.vision_tower.forward          = torch.compile(model.vision_tower.forward, mode='reduce-overhead', fullgraph=True)
+
+# #Warm-up
 # with torch.no_grad():
-#     _ = model(torch.randint(0, 1000, (1,1), device=device, dtype=torch.int32))
-
-
-#Add torch.compile
-#from hqq.utils.generation_hf import patch_model_for_compiled_runtime
-#patch_model_for_compiled_runtime(model.language, processor.tokenizer, warmup=True)
+#     for _ in range(5):
+#         generate(img_path="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png", prompt="what is the image?");
+# gc.collect()
 ########################################################################################
-import requests
-from PIL import Image
 
-image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"
-
-image = Image.open(requests.get(image_path, stream=True).raw)
-
-messages = [
-    {
-        "role": "user",
-        "content": [
-            {"text": None, "type": "image"},
-            {"text": "what is the image?", "type": "text"},
-        ],
-    }
-]
-
-text   = processor.apply_chat_template(messages, add_generation_prompt=True)
-inputs = processor(text=text, images=image, return_tensors="pt")
-inputs["pixel_values"] = inputs["pixel_values"].to(model.dtype)
-inputs = {k: v.to(model.device) for k, v in inputs.items()}
-
-with torch.inference_mode():
-    output     = model.generate(**inputs, max_new_tokens=500, stop_strings=["<|im_end|>"], tokenizer=processor.tokenizer, do_sample=True, temperature=0.9)
-    output_ids = output[0][inputs["input_ids"].shape[1]:]
-    result     = processor.decode(output_ids, skip_special_tokens=True)
-
-print(result)
+print(generate(img_path="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png", prompt="what is the image?"))
