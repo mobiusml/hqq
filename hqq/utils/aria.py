@@ -281,10 +281,7 @@ def patch_model_for_compiled_runtime(
         processor.tokenizer.add_special_tokens({"pad_token": "<<[PAD]>>"})
 
     def custom_forward(*args, **kwargs):
-        # Prefill phase
-        out_fct = forward_simple
-
-        # Decoding pahse
+        # Decoding phase
         if (
             (len(args) > 0 and args[0].shape[-1] == 1)
             or ("input_ids" in kwargs and kwargs["input_ids"].shape[-1] == 1)
@@ -292,9 +289,14 @@ def patch_model_for_compiled_runtime(
         ):
             out_fct = forward_compiled
 
-        with sdpa_kernel([SDPBackend.MATH]):
-            out = out_fct(*args, **kwargs)
+            with sdpa_kernel([SDPBackend.MATH]):
+                out = out_fct(*args, **kwargs)
 
+            return out
+
+        # Prefill phase
+        out_fct = forward_simple
+        out = out_fct(*args, **kwargs)
         return out
 
     model.language_model.forward = custom_forward
