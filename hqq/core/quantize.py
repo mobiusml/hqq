@@ -556,9 +556,37 @@ class HQQLinear(nn.Module):
 
         return self
 
+    #Only supports in-place
     def to(self, *args, **kwargs):
-        # TODO: later
+        print('here')
+        super().to(*args, **kwargs)
+
+        device, dtype = None, None
+        for i in range(len(args)):
+            if(isinstance(args[i], torch.dtype)):
+                dtype = args[i]
+            if(isinstance(args[i], (str, torch.device))):
+                device = torch.device(args[i])
+
+        if(len(kwargs)>0):
+            device = kwargs.get('device') if (device is None) else device
+            dtype  = kwargs.get('dtype') if(dtype is None) else dtype
+
+        if(dtype is None):
+            dtype = self.meta['compute_dtype']
+        if(device is None):
+            device = self.W_q.device
+
+        assert ((device is not None) and (dtype is not None)), "Invalid .to() dtype/device parameters."
+        print(device, dtype)
+
+        self.meta['compute_dtype'] = dtype
+        self.W_q.data      = self.W_q.data.to(device=device)
+        self.meta["scale"] = self.meta["scale"].to(*args, **kwargs)
+        self.meta["zero"]  = self.meta["zero"].to(*args, **kwargs)
+        self.bias          = self.bias.to(*args, **kwargs) if (self.bias is not None) else None
         return self
+
 
     # TODO: later
     # def to_empty(self, device, recurse=True):
