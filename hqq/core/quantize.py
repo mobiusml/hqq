@@ -425,6 +425,15 @@ class HQQLinear(nn.Module):
                     PRINT_ZERO_SCALE_DEPRECATED = False
                 self.quant_config['scale_quant_params'] = None
                 self.quant_config['zero_quant_params'] = None
+
+            # Handle group_size==None
+            if self.quant_config["weight_quant_params"]["group_size"] == None:
+                self.quant_config["weight_quant_params"]["group_size"] = (
+                    self.linear_layer.in_features
+                    if (self.quant_config["weight_quant_params"]["axis"] == 1)
+                    else self.linear_layer.out_features
+                )
+                
             self.quantize(self.linear_layer.weight.data, **self.quant_config)
             self.bias = (
                 None
