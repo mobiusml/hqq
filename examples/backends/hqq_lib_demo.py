@@ -4,7 +4,7 @@
 ########################################################################
 import torch
 device        = 'cuda:0'
-backend       = 'torchao_int4' #"torchao_int4" (4-bit only) or "bitblas" (4-bit + 2-bit)
+backend       = "torchao_int4" #'torchao_int4' #"torchao_int4" (4-bit only) or "bitblas" (4-bit + 2-bit) or "gemlite" (8-bit, 4-bit, 2-bit, 1-bit)
 compute_dtype = torch.bfloat16 if backend=="torchao_int4" else torch.float16
 cache_dir     = '.' 
 model_id      = 'meta-llama/Meta-Llama-3-8B-Instruct'
@@ -27,6 +27,12 @@ HQQLinear.set_backend(HQQBackend.PYTORCH)
 #Optimize
 from hqq.utils.patching import prepare_for_inference
 prepare_for_inference(model, backend=backend, verbose=True)
+
+#Load GemLite cache
+if(backend == 'gemlite'):
+	import gemlite
+	gemlite.core.GEMLITE_TRITON_RESTRICT_M = True
+	gemlite.core.GemLiteLinear.load_config('/tmp/gemlite_config.json')
 
 #Inference
 ########################################################################
@@ -54,3 +60,7 @@ inputs = tokenizer([tokenizer.apply_chat_template(messages, tokenize=False, add_
 outputs = model.generate(**inputs, max_new_tokens=1000, cache_implementation="static", pad_token_id=tokenizer.pad_token_id) 
 #print(tokenizer.decode(outputs[0]))
 
+########################################################################
+#Save gemlite cache
+if(backend == 'gemlite'):
+	gemlite.core.GemLiteLinear.cache_config('/tmp/gemlite_config.json') 
