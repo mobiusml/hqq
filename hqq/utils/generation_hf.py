@@ -206,9 +206,8 @@ class HFGenerator:
 
     # torch.compile needs about 5-10 runs to warmup
     def warmup(self):
-        if self.is_compiled:
-            for prompt in WARMUP_PROMPTS:
-                self.generate(prompt, print_tokens=False)
+        for prompt in WARMUP_PROMPTS:
+            self.generate(prompt, print_tokens=False)
         return self
 
     def next_multiple(self, val):  # next power of 2
