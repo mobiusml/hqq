@@ -457,7 +457,7 @@ class HQQLinear(nn.Module):
         device: str = "cuda",
         del_orig: bool = True,
     ):
-        dummy_linear = torch.nn.Linear(1, 1, bias=False)
+        dummy_linear = torch.nn.Linear(weight.shape[1], weight.shape[0], bias=False)
         dummy_linear.weight.data = weight
         dummy_linear.bias = bias
 
