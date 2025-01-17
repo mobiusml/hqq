@@ -72,6 +72,7 @@ class Quantizer:
     }
 
     @classmethod
+    @torch.compile
     def quantize(
         cls,
         tensor: Tensor,
