@@ -211,7 +211,7 @@ class HFGenerator:
         return self
 
     def next_multiple(self, val):  # next power of 2
-        vals = [2**i for i in range(5, 14)]  # [32, 64, ..., 4096, 8192]
+        vals = [2**i for i in range(5, 20)]  # [32, 64, ...]
         new_val = vals[[i for i in range(len(vals)) if (vals[i] - val) > 0][0]]
         return new_val
 
