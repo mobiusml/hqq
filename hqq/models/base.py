@@ -478,7 +478,7 @@ class BaseHQQModel:
 
         # Load weights
         try:
-            weights = cls.load_weights(save_dir)
+            weights = cls.load_weights(save_dir, device)
         except Exception:
             print("Failed to load the weights")
             raise FileNotFoundError
