@@ -9,6 +9,9 @@ class BaseHQQHFModel(BaseHQQModel):
     # Save model architecture
     @classmethod
     def cache_model(cls, model, save_dir):
+        # Update model architecture in the config
+        model.config.architectures = [model.__class__.__name__]
+        # Save config
         model.config.save_pretrained(save_dir)
 
     # Create empty model from config
@@ -27,8 +30,11 @@ class BaseHQQHFModel(BaseHQQModel):
 
         # Todo: add support for other auto models
         archs = config.architectures
-        if len(archs) == 1 and ("CausalLM" in archs[0]):
-            auto_class = transformers.AutoModelForCausalLM
+        if len(archs) == 1:
+            if ("CausalLM" in archs[0]):
+                auto_class = transformers.AutoModelForCausalLM
+            elif ("SequenceClassification" in archs[0]):
+                auto_class = transformers.AutoModelForSequenceClassification
 
         with init_empty_weights():
             model = auto_class.from_config(config, **model_kwargs)
