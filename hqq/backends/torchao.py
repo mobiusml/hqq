@@ -154,7 +154,7 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
         meta_tensor = torch.mean(
             meta_tensor.reshape([-1, new_group_size]), axis=1, keepdim=True
         )
-        return meta_tensor
+        return torch.nn.Parameter(meta_tensor, requires_grad=False)
 
     def find_multiple(self, n: int, k: int) -> int:
         if n % k == 0:

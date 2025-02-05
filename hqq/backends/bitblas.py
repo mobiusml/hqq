@@ -68,11 +68,9 @@ class HQQLinearBitBlas(torch.nn.Module):
         # Reshape for group_size is None
         if self.group_size is None:
             self.group_size = 128
-            self.W_q = self.W_q.reshape([-1, self.group_size])
-            self.scale = self.reshape_meta_axis1(
-                self.scale, self.group_size, self.shape
-            )
-            self.zero = self.reshape_meta_axis1(self.zero, self.group_size, self.shape)
+            self.W_q   = self.W_q.reshape([-1, self.group_size])
+            self.scale = self.reshape_meta_axis1(self.scale, self.group_size, self.shape)
+            self.zero  = self.reshape_meta_axis1(self.zero, self.group_size, self.shape)
 
         self.meta_shape_bitblas = (
             self.out_features,
@@ -112,9 +110,9 @@ class HQQLinearBitBlas(torch.nn.Module):
 
         self.matmul_eng = HQQLinearBitBlas.ENG_CACHE[self.eng_tag]
 
-        self.W_q = self.matmul_eng.transform_weight(self.W_q.reshape(self.shape)).to(self.device)
-        self.zero = self.zero.view(self.meta_shape_bitblas)
-        self.scale = self.scale.view(self.meta_shape_bitblas)
+        self.W_q        = self.matmul_eng.transform_weight(self.W_q.reshape(self.shape)).to(self.device)
+        self.zero.data  = self.zero.data.view(self.meta_shape_bitblas)
+        self.scale.data = self.scale.data.view(self.meta_shape_bitblas)
         torch.cuda.empty_cache()
 
     @torch.no_grad()
@@ -123,7 +121,7 @@ class HQQLinearBitBlas(torch.nn.Module):
         meta_tensor = torch.mean(
             meta_tensor.reshape([-1, new_group_size]), axis=1, keepdim=True
         )
-        return meta_tensor
+        return torch.nn.Parameter(meta_tensor, requires_grad=False)
 
     @staticmethod
     def check(hqq_layer):

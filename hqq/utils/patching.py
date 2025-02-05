@@ -2,7 +2,7 @@
 #####################################################
 import torch
 from torch import Tensor
-from ..core.quantize import Quantizer, HQQLinear
+from ..core.quantize import Quantizer, HQQLinear, BaseQuantizeConfig
 from ..core.utils import cleanup
 from ..core.peft import HQQLinearLoRA
 from ..models.hf.base import AutoHQQHFModel
@@ -33,11 +33,29 @@ def patch_linearlayers(model, fct, patch_param=None, verbose=False):
 
     _patch_linear(model)
 
+
+#Automatically build a quant_config if it's not passed as an argument
+def autoset_quant_config(hqq_layer, patch_param = None):
+
+    if(patch_param is not None):
+        setattr(hqq_layer, 'quant_config', patch_param)
+
+    if(hqq_layer.quant_config is None):
+        setattr(hqq_layer, 'quant_config', BaseQuantizeConfig(nbits=hqq_layer.meta['nbits'], 
+                                                              group_size=hqq_layer.meta['group_size'], 
+                                                              axis=hqq_layer.meta['axis'], 
+                                                              quant_scale=hqq_layer.meta['quant_scale'], 
+                                                              quant_zero=hqq_layer.meta['quant_zero'],
+                                                              ))
+
+    return hqq_layer
+
 def patch_add_quant_config(layer, patch_param):
-    if type(layer) is HQQLinear:
-        layer.quant_config = patch_param
-    if type(layer) is HQQLinearLoRA:
-        layer.linear_layer.quant_config = patch_param
+    if(isinstance(layer, HQQLinear)):
+        autoset_quant_config(layer, patch_param)
+
+    if(isinstance(layer, HQQLinearLoRA)):
+        autoset_quant_config(layer.linear_layer, patch_param)
     return layer
 
 # add dummy weights to a layer
@@ -110,6 +128,7 @@ def prepare_for_inference(model, allow_merge=False, backend="default", verbose=F
     if backend == "torchao_int4":
         allow_merge = False
 
+    patch_linearlayers(model, patch_add_quant_config, patch_param=None)
     patch_linearlayers(model, patch_hqq_inference)
     patch_linearlayers(model, patch_lora_inference)
     cleanup()
