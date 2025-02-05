@@ -23,12 +23,15 @@ except Exception:
     patch_hqq_to_gemlite = None
 
 def patch_linearlayers(model, fct, patch_param=None, verbose=False):
-    base_class = model.base_class if (hasattr(model, "base_class")) else AutoHQQHFModel
-    base_class.setup_model(model)
-    model.base_class.patch_linearlayers(
-        model, fct, dict([(k, patch_param) for k in model.linear_tags]), verbose=verbose
-    )
 
+    def _patch_linear(model):
+        for name, layer in model.named_children():
+            if isinstance(layer, (HQQLinear, HQQLinearLoRA)):
+                setattr(model, name, fct(layer, patch_param))
+            else:
+                _patch_linear(layer)
+
+    _patch_linear(model)
 
 def patch_add_quant_config(layer, patch_param):
     if type(layer) is HQQLinear:
@@ -36,7 +39,6 @@ def patch_add_quant_config(layer, patch_param):
     if type(layer) is HQQLinearLoRA:
         layer.linear_layer.quant_config = patch_param
     return layer
-
 
 # add dummy weights to a layer
 def patch_add_weight_param(layer, patch_param):

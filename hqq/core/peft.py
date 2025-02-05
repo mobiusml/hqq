@@ -125,6 +125,18 @@ class HQQLinearLoRA(nn.Module):
             nn.init.kaiming_uniform_(self.lora_A, a=np.sqrt(5))
             nn.init.zeros_(self.lora_B)
 
+
+        #Compute dtype = used for inference
+        if(hasattr(self.linear_layer, 'compute_dtype')): #HQQ layer
+            self.compute_dtype = self.linear_layer.compute_dtype
+        else: #Regular layer
+            fp_param = [p for p in layer.parameters() if p.is_floating_point()]
+            if(len(fp_param)>0):
+                self.compute_dtype = fp_param[0].dtype
+            else:
+                self.compute_dtype = self.train_dtype
+
+
     def forward_lora(self, x: Tensor) -> Tensor:  # output is self.train_dtype
         return (
             torch.matmul(
@@ -196,19 +208,19 @@ class HQQLinearLoRA(nn.Module):
         }
 
     def load_state_dict(self, state_dict):
-        self.lora_A.data = state_dict["lora_A"].data.to(self.device)
-        self.lora_B.data = state_dict["lora_B"].data.to(self.device)
+        self.lora_A.data = state_dict["lora_A"].data.to(device=self.device, dtype=self.compute_dtype)
+        self.lora_B.data = state_dict["lora_B"].data.to(device=self.device, dtype=self.compute_dtype)
 
         if state_dict["bias"] is not None:
-            self.bias.data = state_dict["bias"].data.to(self.device)
+            self.bias.data = state_dict["bias"].data.to(device=self.device, dtype=self.compute_dtype)
 
         # Handle different use-cases of scaling
         if isinstance(state_dict["scaling"], (int, float)):
             self.scaling = state_dict["scaling"]
         if isinstance(state_dict["scaling"], nn.Parameter):
-            self.scaling.data = state_dict["scaling"].data.to(self.device)
+            self.scaling.data = state_dict["scaling"].data.to(device=self.device, dtype=self.compute_dtype)
         if isinstance(state_dict["scaling"], Tensor):
-            self.scaling = state_dict["scaling"].to(self.device)
+            self.scaling = state_dict["scaling"].to(device=self.device, dtype=self.compute_dtype)
 
 
 # LoRA with fake quantization
@@ -527,19 +539,16 @@ class PeftUtils:
                 )
             lora_global_params = lora_data
 
-        def _patch_linear_load_weights(layer, patch_params, return_layer=True):
-            if is_hqq_lora_layer(layer):
-                layer.load_state_dict(lora_global_params[layer.name])
-            if return_layer:
-                return layer
+        #Load weights / cast to compute_dtype
+        def _load_weights(layer, lora_global_params):
+            layer.load_state_dict(lora_global_params[layer.name])
+            return layer
 
-        # Linear tags
-        linear_tags = model.linear_tags
+        def _patch_linear_load_weights(model, lora_global_params):
+            for name, layer in model.named_children():
+                if is_hqq_lora_layer(layer):
+                    setattr(model, name, _load_weights(layer, lora_global_params))
+                else:
+                    _patch_linear_load_weights(layer, lora_global_params)
 
-        # Patch
-        base_class.patch_linearlayers(
-            model,
-            _patch_linear_load_weights,
-            dict([(linear_tag, None) for linear_tag in linear_tags]),
-            verbose=verbose,
-        )
+        _patch_linear_load_weights(model, lora_global_params)
