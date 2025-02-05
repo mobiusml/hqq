@@ -248,7 +248,7 @@ class BaseHQQModel:
     # Load weights from disk
     @classmethod
     def load_weights(cls, save_dir: str, map_location=None):
-        return torch.load(cls.get_weight_file(save_dir), map_location=map_location)
+        return torch.load(cls.get_weight_file(save_dir), map_location=map_location, weights_only=True)
 
     # Set-up model with the necessary data
     @classmethod

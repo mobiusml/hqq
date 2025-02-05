@@ -522,7 +522,7 @@ class PeftUtils:
 
         base_class.setup_model(model)
 
-        lora_data = torch.load(filename, map_location="cpu")
+        lora_data = torch.load(filename, map_location="cpu", weights_only=True)
 
         # V0.2 format: automatically creates lora modules if the model doesn't contain it
         if ("peft_config" in lora_data) and ("parameters" in lora_data):
