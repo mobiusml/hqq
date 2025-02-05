@@ -49,7 +49,7 @@ def patch_accelerate_device_hook():
 
 # Patches a HuggingFace model to work with torch.compile + static cache
 def patch_model_for_compiled_runtime(
-    model, tokenizer, warmup=True, max_new_tokens=1000, patch_accelerate=True
+    model, tokenizer, warmup=True, max_new_tokens=1000, patch_accelerate=True, pre_compile=True,
 ):  
     if(patch_accelerate):
         patch_accelerate_device_hook()
@@ -60,26 +60,25 @@ def patch_model_for_compiled_runtime(
     
     torch._dynamo.config.inline_inbuilt_nn_modules = False #torch 2.5.0 fix
 
-    forward_compiled = torch.compile(
-        model.forward, mode="reduce-overhead", fullgraph=True
-    )
     forward_simple = model.forward
+
+    if(pre_compile):
+        forward_compiled = torch.compile(model.forward, mode="reduce-overhead", fullgraph=True)
+    else:
+        forward_compiled = model.forward
 
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "<<[PAD]>>"})
 
     def custom_forward(*args, **kwargs):
-        # Prefill pahse
-        out_fct = forward_simple
-
         # Decoding pahse
         if (len(args) > 0 and args[0].shape[-1] == 1) or (
             "input_ids" in kwargs and kwargs["input_ids"].shape[-1] == 1
         ):
-            out_fct = forward_compiled
-        with sdpa_kernel([SDPBackend.MATH]):
-            out = out_fct(*args, **kwargs)
-        return out
+            return forward_compiled(*args, **kwargs)
+        else:
+            #Prefill phase
+            return forward_simple(*args, **kwargs)
 
     model.forward = custom_forward
 
