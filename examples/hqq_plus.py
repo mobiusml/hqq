@@ -2,8 +2,9 @@
 #pip install hqq==1.8.0
 #pip install trl==
 #pip install transformers==4.40.0
-
 #OMP_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0 ipython3 
+
+#HQQ+ version with SFT. Note that we actually use model distillation for HQQ+ not SFT.
 
 ######################################################################################
 import torch
