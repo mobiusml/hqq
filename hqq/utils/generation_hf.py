@@ -49,7 +49,7 @@ def patch_accelerate_device_hook():
 
 # Patches a HuggingFace model to work with torch.compile + static cache
 def patch_model_for_compiled_runtime(
-    model, tokenizer, warmup=True, max_new_tokens=1000, patch_accelerate=True, pre_compile=True,
+    model, tokenizer, warmup=True, max_new_tokens=1000, patch_accelerate=True, pre_compile=None,
 ):  
     if(patch_accelerate):
         patch_accelerate_device_hook()
@@ -61,6 +61,9 @@ def patch_model_for_compiled_runtime(
     torch._dynamo.config.inline_inbuilt_nn_modules = False #torch 2.5.0 fix
 
     forward_simple = model.forward
+
+    if(pre_compile is None):
+        pre_compile = getattr(model.generation_config, 'compile_config', None) is None 
 
     if(pre_compile):
         forward_compiled = torch.compile(model.forward, mode="reduce-overhead", fullgraph=True)
@@ -118,6 +121,7 @@ class HFGenerator:
         top_k: int = 5,
         compile: Union[str, None] = None,  # None / "partial" / "full"
         compile_options: Dict = {"mode": "reduce-overhead", "fullgraph": True},
+        patch_accelerate: bool = True,
     ):
         super().__init__()
 
@@ -128,6 +132,9 @@ class HFGenerator:
             torch._dynamo.config.inline_inbuilt_nn_modules = False #torch 2.5.0 fix
         except:
             pass
+
+        if(patch_accelerate):
+            patch_accelerate_device_hook()
 
         self.model = model
         self.tokenizer = tokenizer
@@ -338,9 +345,18 @@ class HFGenerator:
     def gen_next_token(self, next_token):
         return self.gen_next_token_raw(next_token)
 
-    def enable_cuda_graph(self):
+    def enable_cuda_graph_(self):
         self.do_capture_graph = True
         self.gen_next_token   = self.gen_next_token_withgraph
+        return self
+
+    def enable_cuda_graph(self, iters = 2, prompt = "Write an essay about large language models."):
+        out = self.generate(prompt, print_tokens=False)
+        for _ in range(iters):
+            self.enable_cuda_graph_()
+            out = self.generate(prompt, print_tokens=False)
+        return self
+
 
     def gen_next_token_withgraph(self, next_token):
         self.static_input.copy_(next_token)
