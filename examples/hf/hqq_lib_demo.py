@@ -23,6 +23,10 @@ model     = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=compute_d
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64, axis=1)
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 
+#Save model with HQQ lib
+# AutoHQQHFModel.save_quantized(model, save_path)
+# tokenizer.save_pretrained(save_path)
+
 #Optimize
 from hqq.utils.patching import prepare_for_inference
 prepare_for_inference(model, backend=backend, verbose=True)
