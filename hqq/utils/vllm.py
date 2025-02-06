@@ -1,6 +1,6 @@
 ####################################################
 from typing import Any, Dict, List, Optional
-import torch, numpy
+import torch, numpy, logger
 
 from vllm import _custom_ops as ops
 from vllm.logger import init_logger
@@ -17,7 +17,12 @@ from vllm.model_executor.layers.quantization.hqq_marlin import HQQMarlinConfig, 
 from ..core.quantize import Quantizer
 
 #Gemlite
-from gemlite.core import DType, GemLiteLinear
+try:
+    from gemlite.core import DType, GemLiteLinear
+except:
+    GemLiteLinear = None
+
+logger = logging.getLogger(__name__)
 
 #Hugging Face config quant name tag
 QUANT_NAME = 'hqq'
@@ -320,4 +325,6 @@ class VLLM_HQQ_BACKEND:
     GEMLITE = HQQGemLiteConfig
 
 def set_vllm_hqq_backend(backend: QuantizationConfig = VLLM_HQQ_BACKEND.MARLIN):
+    if(GemLiteLinear is None):
+        logger.error('The GemLite backend is not availble. Make sure gemlite is installed: https://github.com/mobiusml/gemlite')
     return patch_vllm_quant_method(QUANT_NAME, backend)
