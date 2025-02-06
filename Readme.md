@@ -22,10 +22,10 @@ This repository contains the official implementation of Half-Quadratic Quantizat
   We have detailed benchmarks on both language and vision models. Please refer to our blog posts: <a href="https://mobiusml.github.io/hqq_blog/">HQQ</a>, <a href="https://mobiusml.github.io/1bit_blog/">HQQ+</a>.<br> 
 
   <b>What is the speed of the quantized models?</b><br>
-  4-bit models with `axis=1` can use optimized inference fused kernels like torchao's int4_gemm. This is the same kernel used in <a href="https://github.com/pytorch-labs/gpt-fast">gpt-fast</a> and based on our benchmarks, it's the fastest kernel available right now. We also support the <a href="https://github.com/IST-DASLab/marlin/tree/master/marlin">Marlin</a> kernel. Moreover, we focus on making hqq fully compatible with `torch.compile` which speeds-up both training and inference. For more details, please refer to the backend section below. <br>
+  4-bit models with `axis=1` can use optimized inference fused kernels. Moreover, we focus on making hqq fully compatible with `torch.compile` which speeds-up both training and inference. For more details, please refer to the backend section below. <br>
 
   <b>What quantization settings should I use?</b><br>
-  You should start with `nbits=4, group_size=64, axis=1`. These settings offer a good balance between quality, vram usage and speed. If you want better results with the same vram usage, switch to `axis=0` and use the ATEN backend. If you want to use lower like `nbits=2`, you should use `axis=0`with a low group-size via HQQ+, meaning adding low-rank adapters and fine-tune with a small dataset. <br>
+  You should start with `nbits=4, group_size=64, axis=1`. These settings offer a good balance between quality, vram usage and speed. If you want better results with the same vram usage, switch to `axis=0` and use the ATEN backend, but this setting is not supported for fast inference. <br>
   
   <b>What does the `axis` parameter mean? </b><br>
   The `axis` parameter is the axis along which grouping is performed. In general `axis=0` gives better results than `axis=1`, especially at lower bits. However, the optimized inference runtime only supports `axis=1` for the moment.<br>
@@ -38,9 +38,14 @@ This repository contains the official implementation of Half-Quadratic Quantizat
 ### Installation 
 First, make sure you have a Pytorch 2 version that matches your CUDA version: https://pytorch.org/
 
-You can install hqq via  ```pip install hqq```. 
+You can install hqq via  
+```
+#latest stable version
+pip install hqq;
 
-To get the latest version, you can install the core library directly via ```pip install git+https://github.com/mobiusml/hqq.git```. 
+#Latest updates - recommended
+pip install git+https://github.com/mobiusml/hqq.git; 
+```
 
 Alternatively, clone the repo and run ```pip install .``` from this current folder. 
 
@@ -67,53 +72,6 @@ The quantization parameters are set as follows:
 - ```group_size``` (int): no restrictions as long as ```weight.numel()``` is divisible by the ```group_size```.
 - ```view_as_float``` (bool): if True, the quantized parameter is viewed as float instead of an int type.
 
-Setting ```offload_meta=True``` drastically decreases the GPU memory requirements but makes processing slower for smaller group-sizes. When turned on, you can run Llama2-70B and Mixtral with HQQ 2-bit using only 18.8GB and 13GB VRAM respectively.
-
-### Backend
-#### Native Backends
-The following native backends can be used by the `HQQLinear` module:
-```Python
-HQQLinear.set_backend(HQQBackend.PYTORCH)          #Pytorch backend - Default
-HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)  #Compiled Pytorch
-HQQLinear.set_backend(HQQBackend.ATEN)             #Aten/CUDA backend - only axis=0 supported
-```
-The ```HQQBackend.ATEN``` backend is automatically installed and used by default when available.
-Note that ```HQQBackend.ATEN```  only supports `axis=0`. For `axis=1` you need to use ```HQQBackend.PYTORCH``` or ```HQQBackend.PYTORCH_COMPILE```.
-
-Below you can find the speed-up benchmark with various backends, ```HQQBackend.PYTORCH``` being the baseline:
-
- <div class="row"><center>
-  <div class="column">
-    <img src="https://github.com/mobiusml/hqq/blob/master/imgs/hqq_cuda_dequant_llama27b_titanrtx.png" alt="Titan RTX" style="width:48%">
-  <img src="https://github.com/mobiusml/hqq/blob/master/imgs/hqq_cuda_dequant_llama270b_a100.png" alt="A100" style="width:48%">
-  </div>
- </center>
-</div> 
-
-#### Faster Inference
-We support external backends for faster inference with fused kernels. You can enable one of the backends after the model was quantized as follows:
-```Python
-from hqq.utils.patching import prepare_for_inference
-
-#Pytorch backend that makes the model compatible with fullgrah torch.compile: works with any settings
-#prepare_for_inference(model) 
-
-#Torchao's tiny_gemm backned (fastest): nbits=4, compute_dtype=bfloat16, axis=1
-prepare_for_inference(model, backend="torchao_int4") 
-
-#Gemlite backend: nbits=4/2/1, compute_dtype=float16, axis=1
-#prepare_for_inference(model, backend="gemlite") 
-
-#Bitblas backend: nbits=4/2/1, compute_dtype=float16, axis=1
-#prepare_for_inference(model, backend="bitblas") 
-```
-These backends only work with 4-bit quantization and `axis=1`. Additionally, for <a href="https://github.com/IST-DASLab/marlin.git">Marlin</a>, we only support `group_size=None`. Below you can find a comparison between the different backends. The torchao kernel reaches 195 tokens/sec (generation speed) on a 4090.
-
-<p align="center">
-    <img src="https://github.com/mobiusml/hqq/blob/master/imgs/llama_int4_4090.png" alt="backend 4090" >
-</p>
-
-
 ### Usage with Models
 #### Transformers 🤗
 For usage with HF's transformers, see the example below from the <a href="https://huggingface.co/docs/transformers/main/en/quantization#hqq">documentation</a>:
@@ -131,7 +89,7 @@ model = AutoModelForCausalLM.from_pretrained(
     quantization_config=quant_config
 )
 ```
-<b>Note</b>: You can't save/load quantized models directly via `save_pretrained` with this approach. Use the save/load calls from the hqq lib instead.
+You can save/load quantized models as regular transformers models via `save_pretrained` / `from_pretrained`.
 
 #### HQQ Lib
 You can also utilize the HQQ library to quantize transformers models:
@@ -145,7 +103,6 @@ from hqq.models.hf.base import AutoHQQHFModel
 quant_config = BaseQuantizeConfig(nbits=4, group_size=64) 
 AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=compute_dtype, device=device)
 ```
-#### Save/Load
 You can save/load quantized models as follows:
 ```Python
 from hqq.models.hf.base import AutoHQQHFModel
@@ -156,26 +113,39 @@ AutoHQQHFModel.save_quantized(model, save_dir)
 #Load
 model = AutoHQQHFModel.from_quantized(save_dir)
 ```
-#### Setting a backend
-You can set a native backend as follows:
-```Python
-HQQLinear.set_backend(HQQBackend.ATEN if axis==0 else HQQBackend.PYTORCH_COMPILE)
-```
 
-You can patch for faster inference as explained in the <a href="https://github.com/mobiusml/hqq/edit/master/Readme.md#backend">backend</a> section:
+❗ Note that models saved via the hqq lib are not compatible with `.from_pretrained()`
+
+### Backends
+#### Native Backends
+The following native dequantization backends can be used by the `HQQLinear` module:
+```Python
+HQQLinear.set_backend(HQQBackend.PYTORCH)          #Pytorch backend - Default
+HQQLinear.set_backend(HQQBackend.PYTORCH_COMPILE)  #Compiled Pytorch
+HQQLinear.set_backend(HQQBackend.ATEN)             #Aten/CUDA backend - only axis=0 supported
+```
+❗ Note that ```HQQBackend.ATEN```  only supports `axis=0`. 
+
+#### Optimized Inference
+We support external backends for faster inference with fused kernels. You can enable one of the backends after the model was quantized as follows:
 ```Python
 from hqq.utils.patching import prepare_for_inference
-prepare_for_inference(model, backend="torchao_int4")
-```
 
-#### Custom HF Models
-`AutoHQQHFModel` is meant to be compatible with any transformers model. However, its adaptability comes with a drawback - it may encounter issues or experience sluggishness when processing layers. If you encounter such problems, you have the option to create a custom model with clearly defined patching logic to replace `AutoHQQHFModel`. Below are examples of popular models you can utilize or expand upon for this purpose:
+#Pytorch backend that makes the model compatible with fullgrah torch.compile: works with any settings
+#prepare_for_inference(model) 
 
-```Python
-from hqq.models.hf.llama import LlamaHQQ #Llama
-from hqq.models.hf.mistral import MistralHQQ #Mistral
-from hqq.models.hf.mixtral import MixtralHQQ #Mixtral
+#Torchao's tiny_gemm backned (fastest): nbits=4, compute_dtype=bfloat16, axis=1
+prepare_for_inference(model, backend="torchao_int4") 
+
+#Gemlite backend: nbits=4/2/1, compute_dtype=float16, axis=1
+#prepare_for_inference(model, backend="gemlite") 
+
+#Bitblas backend: nbits=4/2, compute_dtype=float16, axis=1
+#prepare_for_inference(model, backend="bitblas") 
 ```
+Note that these backends only work with `axis=1`. Additional restrictions apply regarding the group-size values depending on the backend. You should expect ~158 tokens/sec with a Llama3-8B 4-bit quantized model on a 4090 RTX.
+
+When a quantization config is not supported by the specified inference backend, hqq will fallback to the native backend. 
 
 ### Custom Quantization Configurations ⚙️
 You can set up various quantization configurations for different layers by specifying the settings for each layer name:
@@ -249,7 +219,7 @@ PeftUtils.save_lora_weights(model, filename)
 PeftUtils.load_lora_weights(model, filename)
 ```
 
-We provide a complete example to train a model with HQQ/LoRA that you can find in ```examples/lora/hqq_plus.py```.
+We provide a complete example to train a model with HQQ/LoRA that you can find in ```examples/hqq_plus.py```.
 
 If you want to use muti-gpu training via FSDP, check out this awesome repo by Answer.AI: https://github.com/AnswerDotAI/fsdp_qlora
 
