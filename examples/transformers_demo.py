@@ -8,15 +8,14 @@ device        = 'cuda:0'
 backend       = 'torchao_int4' #'torchao_int4' #"torchao_int4" (4-bit only) or "bitblas" (4-bit + 2-bit) or "gemlite" (8-bit, 4-bit, 2-bit, 1-bit)
 compute_dtype = torch.bfloat16 if backend=="torchao_int4" else torch.float16
 cache_dir     = None
-model_id      = 'meta-llama/Meta-Llama-3-8B-Instruct' #Raw
-#model_id      = 'mobiuslabsgmbh/Meta-Llama-3-8B-Instruct_4bitgs64_hqq_hf' #Pre-quantized
+model_id      = 'mobiuslabsgmbh/Meta-Llama-3-8B-Instruct_4bitgs64_hqq_hf' 
 
 is_prequantized = 'hqq_hf' in model_id
 ########################################################################
 #Load model
 from transformers import AutoModelForCausalLM, AutoTokenizer, HqqConfig 
 
-quant_config = None if(is_prequantized) else HqqConfig(nbits=4, group_size=64, axis=1)
+quant_config = {} if(is_prequantized) else {'quantization_config': HqqConfig(nbits=4, group_size=64, axis=1)}
 
 model = AutoModelForCausalLM.from_pretrained(
     model_id, 
@@ -25,7 +24,7 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map=device, 
      attn_implementation="sdpa",
     low_cpu_mem_usage=True,
-    quantization_config=quant_config,
+    **quant_config,
 )
 
 tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_dir)
