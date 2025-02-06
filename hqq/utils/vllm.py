@@ -219,7 +219,7 @@ class HQQMarlinMethod(LinearMethodBase):
 
 
     def unpack(self, layer, dtype):
-        return unpack_rows(layer.W_q, num_bits=4, size_k=self.input_size_per_partition, size_n=self.output_size_per_partition, dtype=dtype)
+        return unpack_rows(layer.W_q, num_bits=self.quant_config.weight_bits, size_k=self.input_size_per_partition, size_n=self.output_size_per_partition, dtype=dtype)
 
     def dequantize(self, layer):
 
