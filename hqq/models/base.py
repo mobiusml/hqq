@@ -1,6 +1,7 @@
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
 #####################################################
 import os
+import json
 import torch
 from torch import nn
 from torch import float16
@@ -16,6 +17,8 @@ from ..core.utils import cleanup
 from ..core.quantize import HQQLinear
 from ..core.peft import PeftUtils, _HQQ_LORA_CLASSES
 from ..backends.torchao import HQQLinearTorchWeightOnlynt4
+
+from safetensors.torch import save_file
 
 _HQQ_BACKEND_CLASSES = [HQQLinearTorchWeightOnlynt4]
 
@@ -248,7 +251,9 @@ class BaseHQQModel:
     # Load weights from disk
     @classmethod
     def load_weights(cls, save_dir: str, map_location=None):
-        return torch.load(cls.get_weight_file(save_dir), map_location=map_location, weights_only=True)
+        return torch.load(
+            cls.get_weight_file(save_dir), map_location=map_location, weights_only=True
+        )
 
     # Set-up model with the necessary data
     @classmethod
@@ -535,3 +540,74 @@ class BaseHQQModel:
                 print("Skipping adapter loading...", str(e))
 
         return model
+
+    @classmethod
+    def save_to_safetensors(
+        cls, model, save_dir: str, num_blocks_per_file: int = 5, verbose: bool = True
+    ):
+        
+        def generate_file_list(num_files):
+            files = [
+                f"model-{i:05d}-of-{num_files:05d}.safetensors"
+                for i in range(1, num_files + 1)
+            ]
+            return files
+
+        tensors = model.state_dict()
+        num_layers = model.config.num_hidden_layers
+        num_chunks = num_layers // num_blocks_per_file
+
+        #Single file
+        if(num_chunks<=1):
+            save_file({key: tensors[key].cpu() for key in tensors}, save_dir + "/model.safetensors")
+            return
+
+        # Total size
+        total_size = 0
+        for key in tensors:
+            total_size += tensors[key].numel() * tensors[key].element_size()
+
+        all_keys = set(tensors.keys())
+        files = generate_file_list(num_chunks)
+        chunk_step = num_layers // num_chunks
+        num_params = len(tensors)
+        total_seen = 0
+        key_seen = set()
+        index = {}
+        for chunk_id in range(1, num_chunks + 1):
+            current_file = save_dir + "/" + files[chunk_id - 1]
+            remaining_keys = all_keys - key_seen
+
+            if chunk_id == num_chunks:  # Last chunk, save the rest
+                chunk = {key: tensors[key].cpu() for key in remaining_keys}
+                key_seen |= remaining_keys
+                if verbose:
+                    print("saving", chunk_id, ":", len(chunk), "/", num_params)
+                save_file(chunk, current_file)
+                index.update({key: current_file.split("/")[-1] for key in chunk})
+                total_seen += len(chunk)
+            else:
+                tags = [
+                    "layers." + str(i) + "."
+                    for i in range((chunk_id - 1) * chunk_step, chunk_id * chunk_step)
+                ]
+
+                chunk = {}
+                for key in all_keys:
+                    if (True in [(tag in key) for tag in tags]) and (
+                        key not in key_seen
+                    ):
+                        chunk[key] = tensors[key].cpu()
+                        key_seen.add(key)
+                        index[key] = current_file.split("/")[-1]
+
+                if verbose:
+                    print("saving", chunk_id, ":", len(chunk), "/", num_params)
+                save_file(chunk, current_file)
+                total_seen += len(chunk)
+
+        assert total_seen == num_params
+
+        index = {"weight_map": index, "metadata": {"total_size": total_size}}
+        with open(save_dir + "/" + "model.safetensors.index.json", "w") as json_file:
+            json.dump(index, json_file)
