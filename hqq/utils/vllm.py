@@ -373,6 +373,8 @@ class HQQPytorchVLLMLinear(HQQBaseVLLMLinear):
             Quantizer.pack[self.quant_config.packing](W_q), requires_grad=False
         )
 
+        torch.cuda.empty_cache()
+
     @torch.compile()
     def dequantize(self, layer):  # Only 8, 4, 2, 1 bit support. 3-bit NOT supported yet
         scale = layer.scale.view(-1, 1)  # non-transposed
