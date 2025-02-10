@@ -110,6 +110,9 @@ from hqq.models.hf.base import AutoHQQHFModel
 #Save: Make sure to save the model BEFORE any patching
 AutoHQQHFModel.save_quantized(model, save_dir)
 
+#Save as safetensors (to be load via transformers or vllm)
+AutoHQQHFModel.save_to_safetensors(model, save_dir)
+
 #Load
 model = AutoHQQHFModel.from_quantized(save_dir)
 ```
