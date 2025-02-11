@@ -515,3 +515,54 @@ def set_vllm_hqq_backend(backend: QuantizationConfig = VLLM_HQQ_BACKEND.MARLIN):
             "The GemLite backend is not availble. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
         )
     return patch_vllm_quant_method(QUANT_NAME, backend)
+
+
+##################################################################################################################################
+#Model specific patching
+import torch
+import torch.nn as nn
+from typing import Optional
+from vllm.model_executor.layers.linear import RowParallelLinear
+from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
+import vllm.model_executor.models.mixtral_quant as mixtral_quant
+
+#Mixtral
+class MixtralMLPRowParallel(nn.Module):
+
+    def __init__(
+        self,
+        num_experts: int,
+        hidden_size: int,
+        intermediate_size: int,
+        quant_config: Optional[QuantizationConfig] = None,
+    ) -> None:
+        super().__init__()
+        self.num_experts = num_experts
+        self.ffn_dim = intermediate_size
+        self.hidden_dim = hidden_size
+
+        self.w1 = RowParallelLinear(self.hidden_dim,
+                                   self.ffn_dim,
+                                   bias=False,
+                                   quant_config=quant_config)
+        self.w2 = RowParallelLinear(self.ffn_dim,
+                                   self.hidden_dim,
+                                   bias=False,
+                                   quant_config=quant_config)
+        self.w3 = RowParallelLinear(self.hidden_dim,
+                                   self.ffn_dim,
+                                   bias=False,
+                                   quant_config=quant_config)
+
+        # TODO: Use vllm's SiluAndMul
+        self.act_fn = nn.SiLU()
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        w1_out, _ = self.w1(hidden_states)
+        w1_out = self.act_fn(w1_out)
+        w3_out, _ = self.w3(hidden_states)
+        current_hidden_states = w1_out * w3_out
+        current_hidden_states, _ = self.w2(current_hidden_states)
+        return current_hidden_states
+
+mixtral_quant.MixtralMLP = MixtralMLPRowParallel
