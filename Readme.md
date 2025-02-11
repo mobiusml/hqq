@@ -64,6 +64,10 @@ hqq_layer = HQQLinear(your_linear_layer, #torch.nn.Linear or None
                       initialize=True, #Use False to quantize later
                       del_orig=True #if True, delete the original layer
                       )
+
+W_r = hqq_layer.dequantize() #dequantize()
+W_q = hqq_layer.unpack(dtype=torch.uint8) #unpack
+y   = hqq_layer(x) #forward-pass
 ```
 
 The quantization parameters are set as follows:
