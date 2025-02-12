@@ -40,8 +40,9 @@ for linear_method in HQQ_LINEAR_METHODS:
 # Gemlite
 try:
     from gemlite.core import DType, GemLiteLinear
+    gemlite_is_available = True
 except Exception:
-    GemLiteLinear = None
+    gemlite_is_available = False
 
 logger = logging.getLogger(__name__)
 
@@ -433,13 +434,13 @@ class HQQGemLiteConfig(HQQBaseVLLMConfig):
 class HQQGemLiteVLLMLinear(HQQBaseVLLMLinear):
     """Linear HQQ VLLM with GemLite backend"""
 
+    gemlite_packing_bitwidth = 32
+
     def __init__(
         self,
         quant_config: QuantizationConfig,
     ):
         super().__init__(quant_config)
-
-        self.gemlite_packing_bitwidth = 32
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         super().process_weights_after_loading(layer)
@@ -462,7 +463,7 @@ class HQQGemLiteVLLMLinear(HQQBaseVLLMLinear):
             layer.scale.view(-1, 1),
             layer.zero.view(-1, 1),
             bias=None,
-            packing_bitwidth=self.gemlite_packing_bitwidth,
+            packing_bitwidth=HQQGemLiteVLLMLinear.gemlite_packing_bitwidth,
         )
 
         layer.gemlite_linear = gemlite_linear
@@ -510,10 +511,11 @@ class VLLM_HQQ_BACKEND:
 
 
 DEFAULT_VLLM_HQQ_BACKEND = VLLM_HQQ_BACKEND.MARLIN
+
 def set_vllm_hqq_backend(backend: QuantizationConfig):
     global DEFAULT_VLLM_HQQ_BACKEND
     DEFAULT_VLLM_HQQ_BACKEND = backend
-    if GemLiteLinear is None:
+    if (gemlite_is_available == False and backend == VLLM_HQQ_BACKEND.GEMLITE):
         logger.error(
             "The GemLite backend is not availble. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
         )
