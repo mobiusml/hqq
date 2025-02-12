@@ -509,7 +509,10 @@ class VLLM_HQQ_BACKEND:
     PYTORCH = HQQPytorchConfig
 
 
-def set_vllm_hqq_backend(backend: QuantizationConfig = VLLM_HQQ_BACKEND.MARLIN):
+DEFAULT_VLLM_HQQ_BACKEND = VLLM_HQQ_BACKEND.MARLIN
+def set_vllm_hqq_backend(backend: QuantizationConfig):
+    global DEFAULT_VLLM_HQQ_BACKEND
+    DEFAULT_VLLM_HQQ_BACKEND = backend
     if GemLiteLinear is None:
         logger.error(
             "The GemLite backend is not availble. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
