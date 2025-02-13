@@ -13,6 +13,8 @@ from vllm.model_executor.layers.quantization.base_config import (
     QuantizeMethodBase,
 )
 
+from vllm.model_executor.layers.quantization import register_quantization_config
+
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     gptq_pack,
     get_pack_factor,
@@ -26,12 +28,16 @@ from vllm.model_executor.layers.quantization.hqq_marlin import (
     HQQEmptyParameter,
     error_loader,
 )
-from ..core.quantize import Quantizer
+from ..core.quantize import Quantizer, HQQLinear, BaseQuantizeConfig
 
 # Add new linear methods in order to use loader_v2
 import vllm.model_executor.layers.linear as vllm_linear
 
-HQQ_LINEAR_METHODS = ["HQQGemLiteVLLMLinear", "HQQPytorchVLLMLinear"]
+HQQ_LINEAR_METHODS = [
+    "HQQGemLiteVLLMLinear",
+    "HQQPytorchVLLMLinear",
+    "HQQOnTheFlyMethod",
+]
 
 for linear_method in HQQ_LINEAR_METHODS:
     if linear_method not in vllm_linear.WEIGHT_LOADER_V2_SUPPORTED:
@@ -39,8 +45,11 @@ for linear_method in HQQ_LINEAR_METHODS:
 
 # Gemlite
 try:
-    from gemlite.core import DType, GemLiteLinear
+    import gemlite
+    from gemlite import DType, GemLiteLinear
+
     gemlite_is_available = True
+
 except Exception:
     gemlite_is_available = False
 
@@ -121,6 +130,26 @@ class HQQweightParameter(PackedvLLMParameter):
             loaded_weight.shape[0],
             loaded_weight.shape[1],
         )
+        super().load_qkv_weight(loaded_weight, **kwargs)
+
+
+class HQQOnTheFlyweightParameter(PackedvLLMParameter):
+    def __init__(self, packed_factor: int, packed_dim: int, weight_bits: int, **kwargs):
+        super().__init__(packed_factor, packed_dim, None, **kwargs)
+        self.weight_bits = weight_bits
+        self.input_shape = self.shape[self.input_dim] * self.packed_factor
+        self.output_shape = self.shape[self.output_dim]
+
+    def load_merged_column_weight(self, loaded_weight: torch.Tensor, **kwargs):
+        loaded_weight = loaded_weight.view(-1, self.input_shape)
+        super().load_merged_column_weight(loaded_weight, **kwargs)
+
+    def load_row_parallel_weight(self, loaded_weight: torch.Tensor):
+        loaded_weight = loaded_weight.view(self.output_shape, -1)
+        super().load_row_parallel_weight(loaded_weight)
+
+    def load_qkv_weight(self, loaded_weight: torch.Tensor, **kwargs):
+        loaded_weight = loaded_weight.view(-1, self.input_shape)
         super().load_qkv_weight(loaded_weight, **kwargs)
 
 
@@ -487,8 +516,212 @@ class HQQGemLiteVLLMLinear(HQQBaseVLLMLinear):
 
 ####################################################################################################################################
 ####################################################################################################################################
+# Backends
+class VLLM_HQQ_BACKEND:
+    MARLIN = HQQMarlinConfig
+    GEMLITE = HQQGemLiteConfig
+    PYTORCH = HQQPytorchConfig
 
 
+DEFAULT_VLLM_HQQ_BACKEND = VLLM_HQQ_BACKEND.MARLIN
+COMPILE_OPTIONS = {}  # {"mode":"max-autotune-no-cudagraphs"}
+
+
+####################################################################################################################################
+####################################################################################################################################
+# On-the-fly quantization
+@register_quantization_config("hqq_onthefly")
+class HQQOnTheFlyConfig(QuantizationConfig):
+    """Config class for HQQ Marlin"""
+
+    def __init__(
+        self,
+        weight_bits: int,
+        group_size: int,
+        quant_mode: str = "static",
+        skip_modules: Optional[List[str]] = None,
+    ) -> None:
+        self.weight_bits = weight_bits
+        self.group_size = group_size
+        self.quant_mode = quant_mode
+        self.skip_modules = skip_modules
+
+    def __repr__(self) -> str:
+        return (
+            f"HQQOnTheFlyConfig(weight_bits={self.weight_bits}, "
+            f"group_size={self.group_size})"
+        )
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "hqq_onthefly"
+
+    @classmethod
+    def get_supported_act_dtypes(cls) -> List[torch.dtype]:
+        return [torch.float16]
+
+    @classmethod
+    def get_min_capability(cls) -> int:
+        return 75
+
+    @classmethod
+    def get_config_filenames(cls) -> List[str]:
+        return ["quantize_config.json"]
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "HQQOnTheFlyConfig":
+        wq_params = config["quant_config"]["weight_quant_params"]
+        weight_bits = cls.get_from_keys(wq_params, ["nbits"])
+        quant_mode = cls.get_from_keys(wq_params, ["quant_mode"])
+        group_size = cls.get_from_keys(wq_params, ["group_size"])
+        skip_modules = config["skip_modules"]
+
+        return cls(weight_bits, group_size, quant_mode, skip_modules)
+
+    def is_layer_skipped(self, prefix: str) -> bool:
+        # Split the prefix into its dot-separated components
+        components = prefix.split(".")
+
+        # Check if any of the skip modules exactly matches any component
+        return self.skip_modules is not None and any(
+            module_name in components for module_name in self.skip_modules
+        )
+
+    def get_quant_method(
+        self, layer: torch.nn.Module, prefix: str
+    ) -> Optional["QuantizeMethodBase"]:
+        if isinstance(layer, LinearBase):
+            if self.is_layer_skipped(prefix):
+                return UnquantizedLinearMethod()
+            return HQQOnTheFlyMethod(self)
+        return None
+
+
+class HQQOnTheFlyMethod(LinearMethodBase):
+    """Linear HQQ"""
+
+    enable_compile = True  # compile the forward pass
+
+    def __init__(self, quant_config: QuantizationConfig):
+        self.quant_config = quant_config
+
+    def create_weights(
+        self,
+        layer: torch.nn.Module,
+        input_size_per_partition: int,
+        output_partition_sizes: List[int],
+        input_size: int,
+        output_size: int,
+        params_dtype: torch.dtype,
+        **extra_weight_attrs,
+    ) -> None:
+        self.output_size_per_partition = sum(output_partition_sizes)
+        self.input_size_per_partition = input_size_per_partition
+        self.params_dtype = params_dtype
+
+        weight_loader = extra_weight_attrs.get("weight_loader", error_loader)
+        #######################################################################################
+
+        weight = HQQOnTheFlyweightParameter(
+            data=torch.empty(
+                self.output_size_per_partition,
+                self.input_size_per_partition,
+                dtype=params_dtype,
+            ),
+            input_dim=1,
+            output_dim=0,
+            packed_dim=0,
+            packed_factor=1,
+            weight_bits=16,
+            weight_loader=weight_loader,
+        )
+
+        layer.register_parameter("weight", weight)
+
+        #######################################################################################
+
+    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        global DEFAULT_VLLM_HQQ_BACKEND
+
+        device = layer.weight.device
+        W_nbits = self.quant_config.weight_bits
+        group_size = self.quant_config.group_size
+        quant_mode = self.quant_config.quant_mode
+        tmp_linear = None
+
+        if W_nbits == 8 and group_size is None:
+            if gemlite_is_available is False:
+                raise NotImplementedError(
+                    "GemLite is required for this setting. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
+                )
+
+            tmp_linear = torch.nn.Linear(1, 1, bias=False)
+            tmp_linear.weight.data = layer.weight
+            tmp_linear.in_features = layer.weight.shape[1]
+            tmp_linear.out_features = layer.weight.shape[0]
+
+            processor = (
+                gemlite.A8W8_int8_dynamic
+                if (quant_mode == "dynamic")
+                else gemlite.A16W8
+            )
+            layer.quant_layer = processor(device=device).from_linear(tmp_linear)
+
+        else:
+            # Pytorch backend
+            layer.quant_layer = HQQLinear.from_weights(
+                layer.weight,
+                bias=None,
+                quant_config=BaseQuantizeConfig(
+                    nbits=W_nbits, group_size=group_size, axis=1
+                ),
+                compute_dtype=self.params_dtype,
+                device=device,
+            )
+
+            # Marlin
+            if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.MARLIN:
+                raise NotImplementedError(
+                    "MARLIN backend is not implemented yet for on-the-fly quantization."
+                )
+
+            # GemLite backend
+            if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.GEMLITE:
+                if gemlite_is_available is False:
+                    raise NotImplementedError(
+                        "GemLite is required for this setting. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
+                    )
+
+                layer.quant_layer = gemlite.A16Wn(device=device).from_hqqlinear(
+                    layer.quant_layer
+                )
+
+        # Compile
+        if HQQOnTheFlyMethod.enable_compile:
+            layer.quant_layer.forward = torch.compile(
+                layer.quant_layer.forward, **COMPILE_OPTIONS
+            )
+
+        # Cleanup
+        del layer.weight, tmp_linear
+        torch.cuda.empty_cache()
+
+    def apply(
+        self,
+        layer: torch.nn.Module,
+        x: torch.Tensor,
+        bias: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        out = layer.quant_layer(x)
+
+        if bias is not None:
+            out += bias
+
+        return out
+
+
+####################################################################################################################################
+####################################################################################################################################
 # Allows overriding a VLLM quant method with arbitrary configs
 def patch_vllm_quant_method(quant_name: str, quant_config: QuantizationConfig):
     import vllm.model_executor.layers.quantization as vllm_quantization
@@ -504,26 +737,53 @@ def patch_vllm_quant_method(quant_name: str, quant_config: QuantizationConfig):
     vllm_quantization.get_quantization_config = get_quantization_config_patched
 
 
-class VLLM_HQQ_BACKEND:
-    MARLIN = HQQMarlinConfig
-    GEMLITE = HQQGemLiteConfig
-    PYTORCH = HQQPytorchConfig
-
-
-DEFAULT_VLLM_HQQ_BACKEND = VLLM_HQQ_BACKEND.MARLIN
-
 def set_vllm_hqq_backend(backend: QuantizationConfig):
     global DEFAULT_VLLM_HQQ_BACKEND
     DEFAULT_VLLM_HQQ_BACKEND = backend
-    if (gemlite_is_available == False and backend == VLLM_HQQ_BACKEND.GEMLITE):
+    if (not gemlite_is_available) and (backend == VLLM_HQQ_BACKEND.GEMLITE):
         logger.error(
             "The GemLite backend is not availble. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
         )
     return patch_vllm_quant_method(QUANT_NAME, backend)
 
 
+# Set's on-the-fly hqq quantization for vllm
+def set_vllm_onthefly_hqq_quant(
+    weight_bits=4, group_size=64, quant_mode="static", skip_modules=["lm_head"]
+):
+    from vllm.model_executor.layers import linear
+
+    original_init = linear.LinearBase.__init__
+
+    def patched_init(
+        self,
+        input_size,
+        output_size,
+        skip_bias_add=False,
+        params_dtype=None,
+        quant_config=None,
+        prefix="",
+    ):
+        if quant_config is None:
+            quant_config = HQQOnTheFlyConfig(
+                weight_bits, group_size, quant_mode, skip_modules
+            )
+        original_init(
+            self,
+            input_size,
+            output_size,
+            skip_bias_add,
+            params_dtype,
+            quant_config,
+            prefix,
+        )
+
+    linear.LinearBase.__init__ = patched_init
+
+
 ##################################################################################################################################
-#Model specific patching
+# Model specific patching
+
 
 def patch_mixtral():
     import torch
@@ -533,9 +793,8 @@ def patch_mixtral():
     from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
     import vllm.model_executor.models.mixtral_quant as mixtral_quant
 
-    #Mixtral
+    # Mixtral
     class MixtralMLPRowParallel(nn.Module):
-
         def __init__(
             self,
             num_experts: int,
@@ -548,18 +807,15 @@ def patch_mixtral():
             self.ffn_dim = intermediate_size
             self.hidden_dim = hidden_size
 
-            self.w1 = RowParallelLinear(self.hidden_dim,
-                                       self.ffn_dim,
-                                       bias=False,
-                                       quant_config=quant_config)
-            self.w2 = RowParallelLinear(self.ffn_dim,
-                                       self.hidden_dim,
-                                       bias=False,
-                                       quant_config=quant_config)
-            self.w3 = RowParallelLinear(self.hidden_dim,
-                                       self.ffn_dim,
-                                       bias=False,
-                                       quant_config=quant_config)
+            self.w1 = RowParallelLinear(
+                self.hidden_dim, self.ffn_dim, bias=False, quant_config=quant_config
+            )
+            self.w2 = RowParallelLinear(
+                self.ffn_dim, self.hidden_dim, bias=False, quant_config=quant_config
+            )
+            self.w3 = RowParallelLinear(
+                self.hidden_dim, self.ffn_dim, bias=False, quant_config=quant_config
+            )
 
             # TODO: Use vllm's SiluAndMul
             self.act_fn = nn.SiLU()
