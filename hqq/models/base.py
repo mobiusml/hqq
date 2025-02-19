@@ -553,13 +553,22 @@ class BaseHQQModel:
             ]
             return files
 
+        #Create directory
+        if(save_dir[-1] != '/'):
+            save_dir += '/'
+
+        os.system('mkdir ' + save_dir)
+
+        #Save config
+        model.config.to_json_file(save_dir + "config.json")
+
         tensors = model.state_dict()
         num_layers = model.config.num_hidden_layers
         num_chunks = num_layers // num_blocks_per_file
 
         #Single file
         if(num_chunks<=1):
-            save_file({key: tensors[key].cpu() for key in tensors}, save_dir + "/model.safetensors")
+            save_file({key: tensors[key].cpu() for key in tensors}, save_dir + "model.safetensors")
             return
 
         # Total size
@@ -575,7 +584,7 @@ class BaseHQQModel:
         key_seen = set()
         index = {}
         for chunk_id in range(1, num_chunks + 1):
-            current_file = save_dir + "/" + files[chunk_id - 1]
+            current_file = save_dir + files[chunk_id - 1]
             remaining_keys = all_keys - key_seen
 
             if chunk_id == num_chunks:  # Last chunk, save the rest
@@ -609,5 +618,5 @@ class BaseHQQModel:
         assert total_seen == num_params
 
         index = {"weight_map": index, "metadata": {"total_size": total_size}}
-        with open(save_dir + "/" + "model.safetensors.index.json", "w") as json_file:
+        with open(save_dir + "model.safetensors.index.json", "w") as json_file:
             json.dump(index, json_file)
