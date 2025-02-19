@@ -243,3 +243,35 @@ def patch_merge_zeros_with_lora(layer, patch_params={"z_shift": 8, "keep_lora": 
         layer.forward = lambda x: forward_updated(layer, x)
 
     return layer
+
+
+#Loads Peft-HF adapter into an HQQ model
+def load_peft_adapter(model, adapter_dir):
+    from safetensors import safe_open
+    from peft import get_peft_model, PeftConfig
+
+    #Load config
+    model = get_peft_model(model, PeftConfig.from_pretrained(adapter_dir))
+
+    #Load weights 
+    tensors = {}
+    with safe_open(adapter_dir + "/adapter_model.safetensors", framework="pt", device=model.device.type) as f:
+        for key in f.keys():
+            base, param = '.'.join(key.split('.')[:-1]) + '.default', key.split('.')[-1]
+            if(base not in tensors):
+                tensors[base] = {}
+            tensors[base][param] = torch.nn.Parameter(f.get_tensor(key))
+
+    #Full module name
+    for name, module in model.named_modules():
+        module.name = name
+
+    #Assign weights
+    def _patch(model):
+        for name, layer in model.named_children():
+            if(layer.name in tensors):
+                for p,v in tensors[layer.name].items():
+                    setattr(layer, p, v)
+            _patch(layer)
+
+    _patch(model)
