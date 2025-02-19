@@ -560,6 +560,9 @@ class BaseHQQModel:
         os.system('mkdir ' + save_dir)
 
         #Save config
+        if(hasattr(model.config, '_attn_implementation_autoset')):
+            del model.config._attn_implementation_autoset
+            
         model.config.to_json_file(save_dir + "config.json")
 
         tensors = model.state_dict()
