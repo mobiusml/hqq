@@ -680,11 +680,13 @@ class HQQLinear(nn.Module):
                 layer_state_dict[key] = state_dict.pop(prefix + key)
             else:
                 if(key not in ['bias']):
-                    missing_keys.append(prefix + key)
-                    
-        layer_state_dict['W_q'] = nn.Parameter(layer_state_dict['W_q'], requires_grad=False)
+                    missing_keys.append(prefix + key)                    
 
-        self.load_state_dict(layer_state_dict, strict=strict)
+        if 'W_q' in layer_state_dict:
+            layer_state_dict['W_q'] = nn.Parameter(layer_state_dict['W_q'], requires_grad=False)
+            self.load_state_dict(layer_state_dict, strict=strict)
+        else:
+            missing_keys.append(prefix + "W_q")  
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
         if "encoded_state_dict" in state_dict:
