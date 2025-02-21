@@ -660,11 +660,13 @@ class HQQOnTheFlyMethod(LinearMethodBase):
             tmp_linear.in_features = layer.weight.shape[1]
             tmp_linear.out_features = layer.weight.shape[0]
 
-            processor = (
-                gemlite.A8W8_int8_dynamic
-                if (quant_mode == "dynamic")
-                else gemlite.A16W8
-            )
+            if("dynamic" in quant_mode):
+                processor = gemlite.A8W8_int8_dynamic
+                if(quant_mode == "dynamic_fp8"):
+                    processor = gemlite.A8W8_fp8_dynamic
+            else:
+                processor = gemlite.A16W8
+
             layer.quant_layer = processor(device=device).from_linear(tmp_linear)
 
         else:
