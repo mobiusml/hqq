@@ -40,7 +40,7 @@ if(backend == 'gemlite'):
 ########################################################################
 ##Inference Using a custom hqq generator - fastest solution + supports real-time token printing
 from hqq.utils.generation_hf import HFGenerator
-gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile="partial").warmup() 
+gen = HFGenerator(model, tokenizer, max_new_tokens=1024, do_sample=True, compile="partial").warmup() 
 
 # gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile="partial", 
 # 									compile_options={"mode": "max-autotune-no-cudagraphs", "fullgraph": True}
