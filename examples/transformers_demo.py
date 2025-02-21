@@ -46,7 +46,7 @@ if(backend == 'gemlite'):
 ########################################################################
 # ##Inference Using a custom hqq generator - currently manual compile breaks with pre-quantized llama models :(
 # from hqq.utils.generation_hf import HFGenerator
-# gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile=False).enable_cuda_graph() 
+# gen = HFGenerator(model, tokenizer, max_new_tokens=1024, do_sample=True, compile=False).enable_cuda_graph() 
 
 # out = gen.generate("Write an essay about large language models.", print_tokens=True)
 
