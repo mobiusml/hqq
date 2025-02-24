@@ -463,8 +463,6 @@ class HQQGemLiteConfig(HQQBaseVLLMConfig):
 class HQQGemLiteVLLMLinear(HQQBaseVLLMLinear):
     """Linear HQQ VLLM with GemLite backend"""
 
-    gemlite_packing_bitwidth = 32
-
     def __init__(
         self,
         quant_config: QuantizationConfig,
@@ -492,7 +490,6 @@ class HQQGemLiteVLLMLinear(HQQBaseVLLMLinear):
             layer.scale.view(-1, 1),
             layer.zero.view(-1, 1),
             bias=None,
-            packing_bitwidth=HQQGemLiteVLLMLinear.gemlite_packing_bitwidth,
         )
 
         layer.gemlite_linear = gemlite_linear
