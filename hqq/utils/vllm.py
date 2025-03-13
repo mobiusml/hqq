@@ -456,7 +456,11 @@ class HQQGemLiteConfig(HQQBaseVLLMConfig):
         if isinstance(layer, LinearBase):
             if self.is_layer_skipped(prefix):
                 return UnquantizedLinearMethod()
-            return HQQGemLiteVLLMLinear(self)
+
+            if(layer.input_size_per_partition % GemLiteLinear.MIN_SIZE == 0 and layer.output_size_per_partition % GemLiteLinear.MIN_SIZE == 0):
+                return HQQGemLiteVLLMLinear(self)
+            else:
+                return HQQPytorchVLLMLinear(self)
         return None
 
 
@@ -652,19 +656,22 @@ class HQQOnTheFlyMethod(LinearMethodBase):
                     "GemLite is required for this setting. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
                 )
 
-            tmp_linear = torch.nn.Linear(1, 1, bias=False)
-            tmp_linear.weight.data = layer.weight
-            tmp_linear.in_features = layer.weight.shape[1]
-            tmp_linear.out_features = layer.weight.shape[0]
+            if(layer.input_size_per_partition % GemLiteLinear.MIN_SIZE == 0 and layer.output_size_per_partition % GemLiteLinear.MIN_SIZE == 0):
+                tmp_linear = torch.nn.Linear(1, 1, bias=False)
+                tmp_linear.weight.data = layer.weight
+                tmp_linear.in_features = layer.weight.shape[1]
+                tmp_linear.out_features = layer.weight.shape[0]
 
-            if("dynamic" in quant_mode):
-                processor = gemlite.A8W8_int8_dynamic
-                if(quant_mode == "dynamic_fp8"):
-                    processor = gemlite.A8W8_fp8_dynamic
+                if("dynamic" in quant_mode):
+                    processor = gemlite.A8W8_int8_dynamic
+                    if(quant_mode == "dynamic_fp8"):
+                        processor = gemlite.A8W8_fp8_dynamic
+                else:
+                    processor = gemlite.A16W8
+
+                layer.quant_layer = processor(device=device).from_linear(tmp_linear)
             else:
-                processor = gemlite.A16W8
-
-            layer.quant_layer = processor(device=device).from_linear(tmp_linear)
+                layer.quant_layer = layer.forward
 
         else:
             # Pytorch backend
@@ -691,9 +698,8 @@ class HQQOnTheFlyMethod(LinearMethodBase):
                         "GemLite is required for this setting. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
                     )
 
-                layer.quant_layer = gemlite.A16Wn(device=device).from_hqqlinear(
-                    layer.quant_layer
-                )
+            if(layer.input_size_per_partition % GemLiteLinear.MIN_SIZE == 0 and layer.output_size_per_partition % GemLiteLinear.MIN_SIZE == 0):
+                layer.quant_layer = gemlite.A16Wn(device=device).from_hqqlinear(layer.quant_layer)
 
         # Compile
         if HQQOnTheFlyMethod.enable_compile:
