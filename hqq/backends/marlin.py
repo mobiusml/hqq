@@ -89,7 +89,7 @@ def patch_hqq_to_marlin(layer, patch_params):
         or (hqq_layer.meta["group_size"] is not None)
         or (hqq_layer.meta["nbits"] != 4)
     ):
-        print("Skipping marlin conversion for", hqq_layer.name)
+        print("Skipping marlin conversion for", getattr(hqq_layer, "name", None))
         return layer
 
     W_r = hqq_layer.unpack(dtype=hqq_layer.compute_dtype).t()

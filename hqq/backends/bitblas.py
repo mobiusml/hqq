@@ -182,7 +182,7 @@ def patch_hqq_to_bitblas(layer, patch_params):
         return layer
 
     if HQQLinearBitBlas.check(hqq_layer) is False:
-        print("Skipping BitBLas conversion for ", hqq_layer.name)
+        print("Skipping BitBLas conversion for ", getattr(hqq_layer, "name", None))
         return layer
 
     hqq_bitblas_layer = HQQLinearBitBlas(hqq_layer)

@@ -307,7 +307,7 @@ def patch_hqq_to_aoint4(layer, patch_params):
         return layer
 
     if hqq_layer.meta["nbits"] != 4 or hqq_layer.meta["axis"] != 1:
-        print("Skipping aoint4 conversion for ", hqq_layer.name)
+        print("Skipping aoint4 conversion for ", getattr(hqq_layer, "name", None))
         return layer
 
     quant_config = getattr(hqq_layer, "quant_config", None)
