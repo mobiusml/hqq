@@ -761,7 +761,8 @@ def set_vllm_onthefly_hqq_quant(
         skip_bias_add=False,
         params_dtype=None,
         quant_config=None,
-        prefix="",
+        *args,
+        **kwargs,
     ):
         if quant_config is None:
             quant_config = HQQOnTheFlyConfig(
@@ -774,7 +775,8 @@ def set_vllm_onthefly_hqq_quant(
             skip_bias_add,
             params_dtype,
             quant_config,
-            prefix,
+            *args,
+            **kwargs,
         )
 
     linear.LinearBase.__init__ = patched_init
