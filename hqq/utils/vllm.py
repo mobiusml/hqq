@@ -50,6 +50,10 @@ try:
 
     gemlite_is_available = True
 
+    #Faster gptq_pack
+    def gptq_pack(q_w: torch.Tensor, num_bits: int, size_k: int, size_n: int):
+        return gemlite.bitpack.pack_weights_over_rows_triton(q_w, num_bits, packing_bitwidth=32, transpose=False)[0]
+
 except Exception:
     gemlite_is_available = False
 
