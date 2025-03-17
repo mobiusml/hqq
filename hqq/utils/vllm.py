@@ -43,6 +43,26 @@ for linear_method in HQQ_LINEAR_METHODS:
     if linear_method not in vllm_linear.WEIGHT_LOADER_V2_SUPPORTED:
         vllm_linear.WEIGHT_LOADER_V2_SUPPORTED.append(linear_method)
 
+logger = logging.getLogger(__name__)
+
+# Faster unpacking
+def unpack_rows(
+    W_q_packed: torch.Tensor,
+    W_nbits: int,
+    num_output_rows: int,
+    num_output_cols: int,
+    dtype: torch.dtype = torch.uint8,
+):
+    num_rows, num_cols = W_q_packed.shape
+    elements_per_sample = num_output_rows // num_rows
+
+    shifts       = torch.arange(elements_per_sample, device=W_q_packed.device, dtype=W_q_packed.dtype) * W_nbits  
+    mask         = ((1 << W_nbits) - 1)
+    W_q_unpacked = ((W_q_packed.unsqueeze(-1) >> shifts) & mask).to(dtype) 
+    W_q_unpacked = W_q_unpacked.permute(0, 2, 1).reshape(num_output_rows, num_cols)
+    
+    return W_q_unpacked
+
 # Gemlite
 try:
     import gemlite
@@ -50,47 +70,24 @@ try:
 
     gemlite_is_available = True
 
-    #Faster gptq_pack
+    # #Faster gptq_pack
     def gptq_pack(q_w: torch.Tensor, num_bits: int, size_k: int, size_n: int):
-        return gemlite.bitpack.pack_weights_over_rows_triton(q_w, num_bits, packing_bitwidth=32, transpose=False)[0]
+        q_w = q_w.cuda()
+        out = gemlite.bitpack.pack_weights_over_rows_triton(q_w, num_bits, packing_bitwidth=32, transpose=False)[0]
+        del q_w
+        torch.cuda.empty_cache()
+        return out
+        
+    #Faster unpacking
+    def unpack_rows(W_q_packed: torch.Tensor, W_nbits: int, num_output_rows: int, num_output_cols: int, dtype: torch.dtype = torch.uint8):
+        return gemlite.bitpack.unpack_over_rows_triton(W_q_packed, W_nbits, num_output_rows, dtype)
 
-except Exception:
+except Exception as e:
+    logger.warning("Gemlite backend not available. Make sure the lib installed https://github.com/mobiusml/gemlite/", e) 
     gemlite_is_available = False
-
-logger = logging.getLogger(__name__)
 
 # Hugging Face config quant name tag
 QUANT_NAME = "hqq"
-
-
-# Faster unpacking
-@torch.compile()
-def unpack_rows(
-    packed_q_w: torch.Tensor,
-    num_bits: int,
-    size_k: int,
-    size_n: int,
-    dtype: torch.dtype = torch.uint8,
-):
-    pack_factor = get_pack_factor(num_bits)
-    assert size_k % pack_factor == 0
-    assert packed_q_w.shape == (
-        size_k // pack_factor,
-        size_n,
-    ), "packed_q_w.shape = {} size_k = {}, size_n = {} pack_Factor = {}".format(
-        packed_q_w.shape, size_k, size_n, pack_factor
-    )
-
-    packed_q_w_copy = packed_q_w.clone()
-    q_res = torch.empty((size_k, size_n), dtype=dtype, device=packed_q_w.device)
-
-    mask = (1 << num_bits) - 1
-    for i in range(pack_factor):
-        vals = packed_q_w_copy & mask
-        packed_q_w_copy >>= num_bits
-        q_res[i::pack_factor, :] = vals
-
-    return q_res
 
 
 # Override HQQweightParameter to support more nbits.
@@ -341,9 +338,9 @@ class HQQBaseVLLMLinear(LinearMethodBase):
     def unpack(self, layer, dtype):
         return unpack_rows(
             layer.W_q,
-            num_bits=self.quant_config.weight_bits,
-            size_k=self.input_size_per_partition,
-            size_n=self.output_size_per_partition,
+            self.quant_config.weight_bits,
+            self.input_size_per_partition,
+            self.output_size_per_partition,
             dtype=dtype,
         )
 
