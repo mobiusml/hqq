@@ -34,7 +34,7 @@ prepare_for_inference(model, backend=backend, verbose=True)
 #Load GemLite cache
 if(backend == 'gemlite'):
 	import gemlite
-	gemlite.core.GemLiteLinear.load_config('/tmp/gemlite_config.json')
+	gemlite.load_config('/tmp/gemlite_config.json')
 
 ########################################################################
 ##Inference Using a custom hqq generator - fastest solution + supports real-time token printing
@@ -61,4 +61,4 @@ out = gen.generate("Write an essay about large language models.", print_tokens=T
 ########################################################################
 #Save gemlite cache
 if(backend == 'gemlite'):
-	gemlite.core.GemLiteLinear.cache_config('/tmp/gemlite_config.json') 
+	gemlite.cache_config('/tmp/gemlite_config.json') 
