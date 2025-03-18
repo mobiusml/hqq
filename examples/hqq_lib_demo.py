@@ -34,7 +34,6 @@ prepare_for_inference(model, backend=backend, verbose=True)
 #Load GemLite cache
 if(backend == 'gemlite'):
 	import gemlite
-	gemlite.core.GEMLITE_TRITON_RESTRICT_M = True
 	gemlite.core.GemLiteLinear.load_config('/tmp/gemlite_config.json')
 
 ########################################################################
