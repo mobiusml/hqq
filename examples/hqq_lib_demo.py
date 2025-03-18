@@ -31,21 +31,21 @@ AutoHQQHFModel.quantize_model(model, quant_config=quant_config, compute_dtype=co
 from hqq.utils.patching import prepare_for_inference
 prepare_for_inference(model, backend=backend, verbose=True)
 
-#Load GemLite cache
-if(backend == 'gemlite'):
-	import gemlite
-	gemlite.load_config('/tmp/gemlite_config.json')
-
 ########################################################################
 ##Inference Using a custom hqq generator - fastest solution + supports real-time token printing
 from hqq.utils.generation_hf import HFGenerator
-gen = HFGenerator(model, tokenizer, max_new_tokens=1024, do_sample=True, compile="partial").warmup() 
+#gen = HFGenerator(model, tokenizer, max_new_tokens=1024, do_sample=True, compile="partial").warmup() 
 
-# gen = HFGenerator(model, tokenizer, max_new_tokens=1000, do_sample=True, compile="partial", 
-# 									compile_options={"mode": "max-autotune-no-cudagraphs", "fullgraph": True}
-# 									).enable_cuda_graph()
+gen = HFGenerator(
+    model,
+    tokenizer,
+    max_new_tokens=512,
+    do_sample=True,
+    compile="partial",
+    compile_options={"mode": "max-autotune-no-cudagraphs", "fullgraph": True},
+).enable_cuda_graph()
 
-out = gen.generate("Write an essay about large language models.", print_tokens=True)
+out = gen.generate("Write an essay about large language models.", print_tokens=False)
 
 ########################################################################
 # #Inference with model,generate()
@@ -59,6 +59,4 @@ out = gen.generate("Write an essay about large language models.", print_tokens=T
 # #print(tokenizer.decode(outputs[0])
 
 ########################################################################
-#Save gemlite cache
-if(backend == 'gemlite'):
-	gemlite.cache_config('/tmp/gemlite_config.json') 
+
