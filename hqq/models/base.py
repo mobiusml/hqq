@@ -544,14 +544,33 @@ class BaseHQQModel:
     @classmethod
     def save_to_safetensors(
         cls, model, save_dir: str, num_blocks_per_file: int = 5, verbose: bool = True
-    ):
-        
+     ):
+         
         def generate_file_list(num_files):
             files = [
                 f"model-{i:05d}-of-{num_files:05d}.safetensors"
                 for i in range(1, num_files + 1)
             ]
             return files
+
+        def get_num_layers(model):
+            num_layers = 0
+
+            def update_num_layers(model):
+                nonlocal num_layers 
+                for name, layer in model.named_children():
+                    if isinstance(layer, (HQQLinear, torch.nn.Linear)): 
+                        num_layers += 1
+                    else:
+                        update_num_layers(layer)
+
+            update_num_layers(model)
+            return num_layers
+
+        if(hasattr(model.config, 'num_hidden_layers')):
+            num_layers = model.config.num_hidden_layers
+        else:
+            num_layers = get_num_layers(model)
 
         #Create directory
         if(save_dir[-1] != '/'):
@@ -562,11 +581,10 @@ class BaseHQQModel:
         #Save config
         if(hasattr(model.config, '_attn_implementation_autoset')):
             del model.config._attn_implementation_autoset
-            
+             
         model.config.to_json_file(save_dir + "config.json")
 
         tensors = model.state_dict()
-        num_layers = model.config.num_hidden_layers
         num_chunks = num_layers // num_blocks_per_file
 
         #Single file
@@ -593,9 +611,11 @@ class BaseHQQModel:
             if chunk_id == num_chunks:  # Last chunk, save the rest
                 chunk = {key: tensors[key].cpu() for key in remaining_keys}
                 key_seen |= remaining_keys
-                if verbose:
-                    print("saving", chunk_id, ":", len(chunk), "/", num_params)
-                save_file(chunk, current_file)
+
+                if(len(chunk)>0):
+                    if verbose:
+                        print("saving", chunk_id, ":", len(chunk), "/", num_params)
+                    save_file(chunk, current_file)
                 index.update({key: current_file.split("/")[-1] for key in chunk})
                 total_seen += len(chunk)
             else:
@@ -613,9 +633,10 @@ class BaseHQQModel:
                         key_seen.add(key)
                         index[key] = current_file.split("/")[-1]
 
-                if verbose:
-                    print("saving", chunk_id, ":", len(chunk), "/", num_params)
-                save_file(chunk, current_file)
+                if(len(chunk)>0):
+                    if verbose:
+                        print("saving", chunk_id, ":", len(chunk), "/", num_params)
+                    save_file(chunk, current_file)
                 total_seen += len(chunk)
 
         assert total_seen == num_params
