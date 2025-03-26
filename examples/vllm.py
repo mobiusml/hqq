@@ -17,6 +17,7 @@ model_id = "mobiuslabsgmbh/Llama-3.1-8B-Instruct_4bitgs64_hqq_hf"
 #On-the-fly quantization
 #from hqq.utils.vllm import set_vllm_onthefly_hqq_quant
 #set_vllm_onthefly_hqq_quant(weight_bits=4, group_size=64, quant_mode='static', skip_modules=['lm_head'])
+##set_vllm_onthefly_hqq_quant(weight_bits=8, group_size=None, quant_mode='dynamic_int8', skip_modules=['lm_head'])
 ##set_vllm_onthefly_hqq_quant(weight_bits=8, group_size=None, quant_mode='dynamic_fp8', skip_modules=['lm_head'])
 #model_id =  "meta-llama/Llama-3.2-3B-Instruct"
 #############################################################
