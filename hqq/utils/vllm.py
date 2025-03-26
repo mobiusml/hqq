@@ -67,6 +67,7 @@ def unpack_rows(
 try:
     import gemlite
     from gemlite import DType, GemLiteLinear
+    from gemlite.core import TORCH_TO_DTYPE
 
     gemlite_is_available = True
 
@@ -449,7 +450,7 @@ class HQQGemLiteConfig(HQQBaseVLLMConfig):
 
     @classmethod
     def get_supported_act_dtypes(cls) -> List[torch.dtype]:
-        return [torch.float16]
+        return [torch.float16, torch.bfloat16]
 
     def get_quant_method(
         self, layer: torch.nn.Module, prefix: str
@@ -481,13 +482,15 @@ class HQQGemLiteVLLMLinear(HQQBaseVLLMLinear):
         super().process_weights_after_loading(layer)
 
         # Gemlite
+        dtype = layer.scale.dtype
+        gemlite_dtype = TORCH_TO_DTYPE[dtype]
         gemlite_linear = GemLiteLinear(
             self.quant_config.weight_bits,
             group_size=self.quant_config.group_size,
             in_features=self.input_size_per_partition,
             out_features=self.output_size_per_partition,
-            input_dtype=DType.FP16,
-            output_dtype=DType.FP16,
+            input_dtype=gemlite_dtype,
+            output_dtype=gemlite_dtype,
             scaled_activations=False,
         )
 
