@@ -138,10 +138,10 @@ We support external backends for faster inference with fused kernels. You can en
 ```Python
 from hqq.utils.patching import prepare_for_inference
 
-#Pytorch backend that makes the model compatible with fullgrah torch.compile: works with any settings
+#Pytorch backend that makes the model compatible with fullgraph torch.compile: works with any settings
 #prepare_for_inference(model) 
 
-#Torchao's tiny_gemm backned (fastest): nbits=4, compute_dtype=bfloat16, axis=1
+#Torchao's tiny_gemm backend (fastest): nbits=4, compute_dtype=bfloat16, axis=1
 prepare_for_inference(model, backend="torchao_int4") 
 
 #Gemlite backend: nbits=4/2/1, compute_dtype=float16, axis=1
