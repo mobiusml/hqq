@@ -5,7 +5,7 @@
 ########################################################################
 import torch
 device        = 'cuda:0'
-backend       = "torchao_int4" #'torchao_int4' #"torchao_int4" (4-bit only) or "bitblas" (4-bit + 2-bit) or "gemlite" (8-bit, 4-bit, 2-bit, 1-bit)
+backend       = "gemlite" #'torchao_int4' #"torchao_int4" (4-bit only) or "bitblas" (4-bit + 2-bit) or "gemlite" (8-bit, 4-bit, 2-bit, 1-bit)
 compute_dtype = torch.bfloat16 if backend=="torchao_int4" else torch.float16
 cache_dir     = None
 model_id      = 'meta-llama/Meta-Llama-3-8B-Instruct'
