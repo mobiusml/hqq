@@ -202,9 +202,9 @@ def optimize_weights_proximal_legacy(
     verbose: bool = False,
 ) -> tuple:
     lp_norm, beta, kappa, iters = (
-        opt_params["lp_norm"],
-        opt_params["beta"],
-        opt_params["kappa"],
+        torch.tensor(opt_params["lp_norm"], device=device),
+        torch.tensor(opt_params["beta"], device=device),
+        torch.tensor(opt_params["kappa"], device=device),
         opt_params["iters"],
     )
 
@@ -218,7 +218,7 @@ def optimize_weights_proximal_legacy(
     scale = scale.to(dtype=dtype, device=device)
     zero = zero.to(dtype=dtype, device=device)
 
-    best_error = 1e4
+    best_error = torch.tensor(1e4, dtype=float32, device=device)
     for i in range(iters):
         W_q = torch.round(W_f * scale + zero).clamp(min_max[0], min_max[1])
         W_r = (W_q - zero) / scale
@@ -226,7 +226,7 @@ def optimize_weights_proximal_legacy(
         zero = torch.mean(W_q - (W_f - W_e) * scale, axis=axis, keepdim=True)
         beta *= kappa
 
-        current_error = float(torch.abs(W_f - W_r).mean())
+        current_error = torch.abs(W_f - W_r).mean()
         if verbose:
             print(i, np.round(current_error, 6))
         if current_error < best_error:
