@@ -24,7 +24,7 @@ torch::Tensor dequantize_1bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale,
 	All tensors should be contiguous !!
 	Only axis=0 is supported since the CUDA kernels heavily rely on this logic. 
 */
-inline torch::Tensor dequantize(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero, torch::IntArrayRef &shape, int group_size, int nbits, int axis, std::string packing)
+inline torch::Tensor dequantize(torch::Tensor &Wq_packed, torch::Tensor &scale, torch::Tensor &zero, int N, int K, int group_size, int nbits, int axis, std::string packing)
 {	
 	//Only axis=0 supported
 	assert(axis == 0 && "Only axis=0 is supported.");
@@ -44,6 +44,7 @@ inline torch::Tensor dequantize(torch::Tensor &Wq_packed, torch::Tensor &scale, 
 		W_r   = W_r.slice(axis, 0, group_size); 
 	}
 
+	std::vector<int64_t> shape = {N, K};
 	return W_r.reshape(shape);
 }
 
