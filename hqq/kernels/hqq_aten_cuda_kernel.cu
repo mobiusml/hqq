@@ -55,7 +55,7 @@ torch::Tensor dequantize_8bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale,
 
 	int blocks = cdiv(n, BLOCK_SIZE);
 
-	AT_DISPATCHER(W_r.type(), "dequantize_8bit_u8", ([&] {
+	AT_DISPATCHER(W_r.scalar_type(), "dequantize_8bit_u8", ([&] {
 		dequantize_8bit_u8_kernel<scalar_t><<<blocks, BLOCK_SIZE>>>(Wq_packed.data_ptr<unsigned char>(), 
 																	scale.data_ptr<scalar_t>(), 
 																	zero.data_ptr<scalar_t>(), 
@@ -133,7 +133,7 @@ torch::Tensor dequantize_4bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale,
 
 	int blocks = cdiv(n, BLOCK_SIZE);
 
-	AT_DISPATCHER(W_r.type(), "dequantize_4bit_u8", ([&] {
+	AT_DISPATCHER(W_r.scalar_type(), "dequantize_4bit_u8", ([&] {
 		dequantize_4bit_u8_kernel<scalar_t><<<blocks, BLOCK_SIZE>>>(Wq_packed.data_ptr<unsigned char>(), 
 																	scale.data_ptr<scalar_t>(), 
 																	zero.data_ptr<scalar_t>(), 
@@ -218,7 +218,7 @@ torch::Tensor dequantize_2bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale,
 
 	int blocks = cdiv(n, BLOCK_SIZE);
 
-	AT_DISPATCHER(W_r.type(), "dequantize_2bit_u8", ([&] {
+	AT_DISPATCHER(W_r.scalar_type(), "dequantize_2bit_u8", ([&] {
 		dequantize_2bit_u8_kernel<scalar_t><<<blocks, BLOCK_SIZE>>>(Wq_packed.data_ptr<unsigned char>(), 
 																	scale.data_ptr<scalar_t>(), 
 																	zero.data_ptr<scalar_t>(), 
@@ -310,7 +310,7 @@ torch::Tensor dequantize_1bit_u8(torch::Tensor &Wq_packed, torch::Tensor &scale,
 
 	int blocks = cdiv(n, BLOCK_SIZE);
 
-	AT_DISPATCHER(W_r.type(), "dequantize_1bit_u8", ([&] {
+	AT_DISPATCHER(W_r.scalar_type(), "dequantize_1bit_u8", ([&] {
 		dequantize_1bit_u8_kernel<scalar_t><<<blocks, BLOCK_SIZE>>>(Wq_packed.data_ptr<unsigned char>(), 
 																	scale.data_ptr<scalar_t>(), 
 																	zero.data_ptr<scalar_t>(), 
@@ -409,7 +409,7 @@ torch::Tensor dequantize_3bit_32(torch::Tensor &Wq_packed, torch::Tensor &scale,
 
 	int blocks = cdiv(n, BLOCK_SIZE);
 
-	AT_DISPATCHER(W_r.type(), "dequantize_3bit_32", ([&] {
+	AT_DISPATCHER(W_r.scalar_type(), "dequantize_3bit_32", ([&] {
 		dequantize_3bit_32_kernel<scalar_t><<<blocks, BLOCK_SIZE>>>(Wq_packed.data_ptr<int32_t>(), 
 																	scale.data_ptr<scalar_t>(), 
 																	zero.data_ptr<scalar_t>(), 
