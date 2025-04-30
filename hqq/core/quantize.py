@@ -247,12 +247,19 @@ class Quantizer:
 hqq_aten_is_available = False
 try:
     import hqq_aten
-
     hqq_aten_is_available = True
+
+    @torch.library.custom_op("hqq::hqq_aten_dequantize", mutates_args=())
+    def hqq_aten_dequantize(W_q: Tensor, scale: Tensor , zero:Tensor, N: int, K: int, group_size: int, nbits: int, axis: int, packing: str) -> Tensor:
+        return hqq_aten.dequantize(W_q, scale, zero, N, K, group_size, nbits, axis, packing)
+
+    @torch.library.register_fake("hqq::hqq_aten_dequantize")
+    def hqq_aten_dequantize_fake(W_q: Tensor, scale: Tensor , zero:Tensor, N: int, K: int, group_size: int, nbits: int, axis: int, packing: str) -> Tensor:
+        return torch.empty((N, K), device=W_q.device, dtype=scale.dtype)
+
 except Exception:
     hqq_aten = None
     hqq_aten_is_available = False
-
 
 class HQQBackend(Enum):
     # Name of the forward functions
@@ -888,16 +895,17 @@ class HQQLinear(nn.Module):
     # ATen C++ / CUDA Bacekdn
     ##########################################################################################
     # Requires building the aten backend
-    @torch.jit.ignore
     def dequantize_Wq_aten(self, W_q: Tensor, meta: dict):
         if meta["view_as_float"]:
             W_q = W_q.view(meta["unpack_view_dtype"])
 
-        return hqq_aten.dequantize(
+        N, K = meta["shape"]
+
+        return hqq_aten_dequantize(
             W_q,
             meta["scale"],
             meta["zero"],
-            meta["shape"],
+            N, K,
             meta["group_size"] if (meta["group_size"]) else -1,
             meta["nbits"],
             meta["axis"],
