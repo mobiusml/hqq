@@ -52,7 +52,7 @@ def unpack_rows(
     num_output_rows: int,
     num_output_cols: int,
     dtype: torch.dtype = torch.uint8,
-):
+) -> torch.Tensor:
     num_rows, num_cols = W_q_packed.shape
     elements_per_sample = num_output_rows // num_rows
 
@@ -72,7 +72,7 @@ try:
     gemlite_is_available = True
 
     # #Faster gptq_pack
-    def gptq_pack(q_w: torch.Tensor, num_bits: int, size_k: int, size_n: int):
+    def gptq_pack(q_w: torch.Tensor, num_bits: int, size_k: int, size_n: int) -> torch.Tensor:
         q_w = q_w.cuda()
         out = gemlite.bitpack.pack_weights_over_rows_triton(q_w, num_bits, packing_bitwidth=32, transpose=False)[0]
         del q_w
@@ -80,7 +80,7 @@ try:
         return out
         
     #Faster unpacking
-    def unpack_rows(W_q_packed: torch.Tensor, W_nbits: int, num_output_rows: int, num_output_cols: int, dtype: torch.dtype = torch.uint8):
+    def unpack_rows(W_q_packed: torch.Tensor, W_nbits: int, num_output_rows: int, num_output_cols: int, dtype: torch.dtype = torch.uint8) -> torch.Tensor:
         return gemlite.bitpack.unpack_over_rows_triton(W_q_packed, W_nbits, num_output_rows, dtype)
 
 except Exception as e:
@@ -155,6 +155,12 @@ class HQQOnTheFlyweightParameter(PackedvLLMParameter):
         super().load_qkv_weight(loaded_weight, **kwargs)
 
 
+#Create alias
+@register_quantization_config("hqq_marlin")
+class HQQMarlinPrequantizedConfig(HQQMarlinConfig):
+    @classmethod
+    def get_name(cls) -> str:
+        return 'hqq_marlin'
 ####################################################################################################################################
 ####################################################################################################################################
 # Base HQQ/VLLM Linear method
@@ -165,6 +171,7 @@ class HQQBaseVLLMConfig(QuantizationConfig):
         self,
         weight_bits: int,
         group_size: int,
+        axis: int = 1,
         skip_modules: Optional[List[str]] = None,
     ) -> None:
         self.weight_bits = weight_bits
@@ -172,6 +179,7 @@ class HQQBaseVLLMConfig(QuantizationConfig):
         self.pack_factor = 32 // weight_bits  # pre-packed into int32 in GPTQ format
         self.skip_modules = skip_modules
         self.packing = Quantizer.bit_to_packing[self.weight_bits]
+        self.axis = axis
 
     def __repr__(self) -> str:
         return (
@@ -202,9 +210,7 @@ class HQQBaseVLLMConfig(QuantizationConfig):
         axis = cls.get_from_keys(wq_params, ["axis"])
         group_size = cls.get_from_keys(wq_params, ["group_size"])
         skip_modules = config["skip_modules"]
-
-        assert axis == 1, "Only axis=1 is supported for HQQ quantized models with VLLM."
-        return cls(weight_bits, group_size, skip_modules)
+        return cls(weight_bits, group_size, axis, skip_modules)
 
     def is_layer_skipped(self, prefix: str) -> bool:
         # Split the prefix into its dot-separated components
@@ -367,9 +373,10 @@ class HQQPytorchConfig(HQQBaseVLLMConfig):
         self,
         weight_bits: int,
         group_size: int,
+        axis: int = 1,
         skip_modules: Optional[List[str]] = None,
     ) -> None:
-        super().__init__(weight_bits, group_size, skip_modules)
+        super().__init__(weight_bits, group_size, axis, skip_modules)
 
     @classmethod
     def get_supported_act_dtypes(cls) -> List[torch.dtype]:
@@ -384,6 +391,12 @@ class HQQPytorchConfig(HQQBaseVLLMConfig):
             return HQQPytorchVLLMLinear(self)
         return None
 
+#Create alias
+@register_quantization_config("hqq_torch")
+class HQQPytorchPrequantizedConfig(HQQPytorchConfig):
+    @classmethod
+    def get_name(cls) -> str:
+        return 'hqq_torch'
 
 class HQQPytorchVLLMLinear(HQQBaseVLLMLinear):
     """Linear HQQ VLLM with Pytorch backend"""
@@ -401,10 +414,10 @@ class HQQPytorchVLLMLinear(HQQBaseVLLMLinear):
             .T.reshape(-1, group_size)
             .contiguous()
         )
-        layer.W_q = torch.nn.Parameter(
-            Quantizer.pack[self.quant_config.packing](W_q), requires_grad=False
-        )
 
+        layer.W_q   = torch.nn.Parameter(Quantizer.pack[self.quant_config.packing](W_q), requires_grad=False)
+        layer.scale = torch.nn.Parameter(layer.scale.data, requires_grad=False)
+        layer.zero  = torch.nn.Parameter(layer.zero.data, requires_grad=False)
         torch.cuda.empty_cache()
 
     @torch.compile()
@@ -413,9 +426,12 @@ class HQQPytorchVLLMLinear(HQQBaseVLLMLinear):
         zero = layer.zero.view(-1, 1)  # non-transposed
 
         group_size = self.quant_config.group_size
-        W_q = Quantizer.unpack[self.quant_config.packing](
-            layer.W_q, dtype=layer.compute_dtype
-        ).view(-1, group_size)
+        W_q = Quantizer.unpack[self.quant_config.packing](layer.W_q, dtype=layer.compute_dtype)
+ 
+        if(self.quant_config.weight_bits == 3):
+            W_q = W_q[: group_size if self.axis == 0 else self.current_shape[0] * self.current_shape[1] // group_size]
+
+        W_q = W_q.view(-1, group_size)
         W_r = ((W_q - zero) * scale).view(layer.current_shape)
         return W_r
 
@@ -444,9 +460,11 @@ class HQQGemLiteConfig(HQQBaseVLLMConfig):
         self,
         weight_bits: int,
         group_size: int,
+        axis: int = 1,
         skip_modules: Optional[List[str]] = None,
     ) -> None:
-        super().__init__(weight_bits, group_size, skip_modules)
+        assert axis == 1, 'Only axis=1 is supported.'
+        super().__init__(weight_bits, group_size, 1, skip_modules)
 
     @classmethod
     def get_supported_act_dtypes(cls) -> List[torch.dtype]:
@@ -458,16 +476,18 @@ class HQQGemLiteConfig(HQQBaseVLLMConfig):
         if isinstance(layer, LinearBase):
             if self.is_layer_skipped(prefix):
                 return UnquantizedLinearMethod()
-
-            if (
-                layer.input_size_per_partition % GemLiteLinear.MIN_SIZE == 0
-                and layer.output_size_per_partition % GemLiteLinear.MIN_SIZE == 0
-            ):
+            try:
                 return HQQGemLiteVLLMLinear(self)
-            else:
+            except:
                 return HQQPytorchVLLMLinear(self)
         return None
 
+#Create alias
+@register_quantization_config("hqq_gemlite")
+class HQQGemLitePrequantizedConfig(HQQGemLiteConfig):
+    @classmethod
+    def get_name(cls) -> str:
+        return 'hqq_gemlite'
 
 class HQQGemLiteVLLMLinear(HQQBaseVLLMLinear):
     """Linear HQQ VLLM with GemLite backend"""
@@ -743,6 +763,9 @@ class HQQOnTheFlyMethod(LinearMethodBase):
 ####################################################################################################################################
 ####################################################################################################################################
 # Allows overriding a VLLM quant method with arbitrary configs
+def enable_vllm_hqq_quant():
+    return 
+    
 def patch_vllm_quant_method(quant_name: str, quant_config: QuantizationConfig):
     import vllm.model_executor.layers.quantization as vllm_quantization
 
@@ -769,7 +792,7 @@ def set_vllm_hqq_backend(backend: QuantizationConfig):
 
 # Set's on-the-fly hqq quantization for vllm
 def set_vllm_onthefly_hqq_quant(
-    weight_bits=4, group_size=64, quant_mode="static", skip_modules=["lm_head"]
+    weight_bits=4, group_size=64, quant_mode="static", skip_modules=["lm_head", "visual", "vision"]
 ):
     from vllm.model_executor.layers import linear
 
