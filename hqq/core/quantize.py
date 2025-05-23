@@ -78,7 +78,7 @@ class Quantizer:
         nbits: float = 4,
         channel_wise: bool = True,
         group_size: int = 64,
-        optimize: bool = False,
+        optimize: bool = True,
         round_zero: bool = False,
         axis: int = 0,
         bitpack: bool = True,
@@ -122,9 +122,7 @@ class Quantizer:
         min_max = [min_v, max_v]
 
         # Note: here we work with the inverse of the scale to avoid division and quantize instead via W*scale + zero, the scale is inverted later on.
-        scale = (max_v / (_max - _min)).clamp(
-            max=2e4
-        )  # clamp to avoid half-precision problems
+        scale = (max_v / (_max - _min)).clamp(max=2e4)  # clamp to avoid half-precision problems
         zero = -_min * scale
 
         # Round zero as in: https://github.com/casper-hansen/AutoAWQ/blob/main/awq/quantize/quantizer.py#L42C9-L42C14
@@ -142,14 +140,19 @@ class Quantizer:
                 device=device,
             )
         else:
-            W_q = torch.round(W * scale + zero).clamp(min_max[0], min_max[1])
+            W_q = (W * scale + zero).round_().clamp_(min_max[0], min_max[1])
+
+        # cleanup
+        del W, _min, _max
+        torch.cuda.empty_cache()
 
         # Store meta-data (we invert the scale for dequantization)
+        scale = 1.0 / scale
         meta = {
             "nbits": nbits,
             "group_size": group_size,
             "shape": shape,
-            "scale": 1.0 / scale,
+            "scale": scale,
             "zero": zero,
             "axis": axis,
             "packing": Quantizer.bit_to_packing[nbits],
@@ -168,8 +171,6 @@ class Quantizer:
             W_q = W_q.to(tensor.dtype)
             meta["packing"] = None
 
-        # cleanup
-        del W, _min, _max
         torch.cuda.empty_cache()
 
         return W_q, meta
@@ -445,12 +446,14 @@ class HQQLinear(nn.Module):
             self.bias = (
                 None
                 if (self.linear_layer.bias is None)
-                else self.linear_layer.bias.to(
+                else self.linear_layer.bias.clone().to(
                     device=self.device, dtype=self.compute_dtype
                 )
             )
 
-        if self.del_orig:
+        if self.del_orig:   
+            for name, param in self.linear_layer.named_parameters():
+                setattr(self.linear_layer, name, None)
             del self.linear_layer
         torch.cuda.empty_cache()
 
@@ -464,7 +467,9 @@ class HQQLinear(nn.Module):
         device: str = "cuda",
         del_orig: bool = True,
     ):
-        dummy_linear = torch.nn.Linear(weight.shape[1], weight.shape[0], bias=False)
+        dummy_linear = torch.nn.Linear(1, 1)
+        dummy_linear.in_features = weight.shape[1]
+        dummy_linear.out_features= weight.shape[0]
         dummy_linear.weight.data = weight
         dummy_linear.bias = bias
 

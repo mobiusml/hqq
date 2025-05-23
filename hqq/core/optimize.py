@@ -93,12 +93,18 @@ def update_scale_grid_search(
 
 # Shrinking operator
 def shrink_lp_op(x: Tensor, beta: float, lp_norm: float) -> Tensor:
-    if lp_norm == 1:
-        return torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - 1.0 / beta)
+    if lp_norm == 1: 
+        #torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - 1.0 / beta)
+        out = torch.abs(x)
+        out.sub_(1.0 / beta).clamp_min_(0.0)
+        out.mul_(torch.sign(x))
+        return out
     else:
-        return torch.sign(x) * torch.nn.functional.relu(
-            torch.abs(x) - (1.0 / beta) * torch.pow(torch.abs(x), lp_norm - 1)
-        )
+        #torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - (1.0 / beta) * torch.pow(torch.abs(x), lp_norm - 1))
+        out = torch.abs(x)
+        out.sub_((1.0 / beta) * out.pow(lp_norm - 1)).clamp_min_(0.0)
+        out.mul_(torch.sign(x))
+        return out
 
 
 # Proximal solver || W - dequantize(quantize(W))||_p^p - Experimental
@@ -154,14 +160,14 @@ def optimize_weights_proximal_v2(
         scale = update_scale_grid_search(W_f, scale, zero, axis, min_max)
 
     # Optimize for zero-point
-    best_error = 1e4
+    best_error = torch.tensor(1e4, dtype=float32, device=device)
     scale_prev, zero_prev = scale.clone(), zero.clone()
     for i in range(iters):
         W_q = torch.round(W_f * scale + zero).clamp(min_max[0], min_max[1])
         W_r = (W_q - zero) / scale
 
         # current_error = float(torch.pow(torch.abs(W_f - W_r), max(0.80, lp_norm)).mean())
-        current_error = float(torch.abs(W_f - W_r).mean())
+        current_error = torch.abs(W_f - W_r).mean().float()
 
         if verbose:
             print(i, np.round(current_error, 6))
@@ -190,6 +196,14 @@ def optimize_weights_proximal_v2(
 
 
 # Proximal solver || W - dequantize(quantize(W))||_p^p
+#@torch.compile(fullgraph=True)
+def optimize_weights_proximal_legacy_step(W_f, scale, zero, min_max, beta, lp_norm, axis):
+    W_q = torch.round(W_f * scale + zero).clamp_(min_max[0], min_max[1])
+    W_r = (W_q - zero) / scale
+    W_e = shrink_lp_op(W_f - W_r, beta, lp_norm)
+    zero = torch.mean(W_q - (W_f - W_e) * scale, axis=axis, keepdim=True)
+    return W_r, W_q, zero, scale
+    
 @torch.inference_mode()
 def optimize_weights_proximal_legacy(
     tensor: Tensor,
@@ -214,21 +228,18 @@ def optimize_weights_proximal_legacy(
         device = torch.device(device)
 
     dtype = float16 if (device.type == "cuda") else float32
-    W_f = tensor.to(dtype=dtype, device=device)
+    W_f   = tensor.to(dtype=dtype, device=device)
     scale = scale.to(dtype=dtype, device=device)
-    zero = zero.to(dtype=dtype, device=device)
+    zero  = zero.to(dtype=dtype, device=device)
 
-    best_error = 1e4
+    best_error = torch.tensor(torch.inf, dtype=float32, device=device)
     for i in range(iters):
-        W_q = torch.round(W_f * scale + zero).clamp(min_max[0], min_max[1])
-        W_r = (W_q - zero) / scale
-        W_e = shrink_lp_op(W_f - W_r, beta, lp_norm)
-        zero = torch.mean(W_q - (W_f - W_e) * scale, axis=axis, keepdim=True)
-        beta *= kappa
+        W_r, W_q, zero, scale = optimize_weights_proximal_legacy_step(W_f, scale, zero, min_max, beta, lp_norm, axis)
+        current_error = torch.abs(W_f - W_r).mean().float()
 
-        current_error = float(torch.abs(W_f - W_r).mean())
-        if verbose:
+        if verbose: 
             print(i, np.round(current_error, 6))
+        
         if current_error < best_error:
             best_error = current_error
         else:
@@ -236,10 +247,10 @@ def optimize_weights_proximal_legacy(
 
     scale = scale.to(tensor.device)
     zero = zero.to(tensor.device)
-    del W_f, W_q, W_r, W_e
+    del W_f, W_q, W_r
     torch.cuda.empty_cache()
 
-    W_q = torch.round(tensor * scale + zero).clamp(min_max[0], min_max[1])
+    W_q = torch.round(tensor * scale + zero).clamp_(min_max[0], min_max[1])
     return W_q, scale, zero
 
 
