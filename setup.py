@@ -7,27 +7,27 @@ from setuptools.command.develop import develop
 from setuptools.command.egg_info import egg_info
 import os
 
-
 def install_cuda_cmd() -> str:
     cmd = "cd hqq/kernels; "
     cmd += "python setup_cuda.py install; "
     cmd += "cd ../..;"
     return cmd
 
-
 def run_setup_cuda():
+    #Skip building cuda kernels for ATEN backend
+    if os.environ.get('DISABLE_CUDA', '0') == '1': 
+        return 
+
     print("Running setup_cuda.py...")
     try:
         os.system(install_cuda_cmd())
     except Exception as e:
         print("Error while running setup_cuda.py:", e)
 
-
 class InstallCommand(install):
     def run(self):
         install.run(self)
         run_setup_cuda()
-
 
 class DevelopCommand(develop):
     def run(self):

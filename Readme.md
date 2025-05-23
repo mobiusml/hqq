@@ -45,6 +45,9 @@ pip install hqq;
 
 #Latest updates - recommended
 pip install git+https://github.com/mobiusml/hqq.git; 
+
+#Disable building the CUDA kernels for the aten backend
+DISABLE_CUDA=1 pip install ...
 ```
 
 Alternatively, clone the repo and run ```pip install .``` from this current folder. 
