@@ -671,22 +671,22 @@ class HQQOnTheFlyMethod(LinearMethodBase):
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         global DEFAULT_VLLM_HQQ_BACKEND
 
-        device = layer.weight.device
-        W_nbits = self.quant_config.weight_bits
+        device     = layer.weight.device
+        W_nbits    = self.quant_config.weight_bits
         group_size = self.quant_config.group_size
         quant_mode = self.quant_config.quant_mode
+        shape      = layer.weight.shape
         tmp_linear = None
 
-        if W_nbits == 8 and group_size is None:
-            if gemlite_is_available is False:
-                raise NotImplementedError(
-                    "GemLite is required for this setting. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
-                )
+        # Marlin
+        if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.MARLIN:
+            raise NotImplementedError("MARLIN backend is not implemented yet for on-the-fly quantization.")
 
-            if (
-                layer.input_size_per_partition % GemLiteLinear.MIN_SIZE == 0
-                and layer.output_size_per_partition % GemLiteLinear.MIN_SIZE == 0
-            ):
+        if W_nbits == 8 and group_size is None:
+            layer.quant_layer = None
+
+            if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.GEMLITE:
+                #8-bit weights
                 tmp_linear = torch.nn.Linear(1, 1, bias=False)
                 tmp_linear.weight.data = layer.weight
                 tmp_linear.in_features = layer.weight.shape[1]
@@ -699,48 +699,43 @@ class HQQOnTheFlyMethod(LinearMethodBase):
                 else:
                     processor = gemlite.A16W8
 
-                layer.quant_layer = processor(device=device).from_linear(tmp_linear)
-            else:
-                layer.quant_layer = layer.forward
+                try:
+                    layer.quant_layer = processor(device=device).from_linear(tmp_linear)
+                except Exception:
+                    logger.error(f'Failed A8W8 gemlite conversion, using Pytorch backend. weights.shape={shape}') 
+
+            if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.PYTORCH or (layer.quant_layer is None):
+                layer.quant_layer = HQQLinear.from_weights(
+                    layer.weight,
+                    bias=None,
+                    quant_config=BaseQuantizeConfig(nbits=8, group_size=None, axis=1),
+                    compute_dtype=self.params_dtype,
+                    device=device,
+                )
 
         else:
-            # Pytorch backend
+            # Quantized weights
+            layer.weight = layer.weight.to(device).contiguous()
             layer.quant_layer = HQQLinear.from_weights(
                 layer.weight,
                 bias=None,
-                quant_config=BaseQuantizeConfig(
-                    nbits=W_nbits, group_size=group_size, axis=1
-                ),
+                quant_config=BaseQuantizeConfig(nbits=W_nbits, group_size=group_size, axis=1),
                 compute_dtype=self.params_dtype,
                 device=device,
             )
 
-            # Marlin
-            if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.MARLIN:
-                raise NotImplementedError(
-                    "MARLIN backend is not implemented yet for on-the-fly quantization."
-                )
-
-            # GemLite backend
             if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.GEMLITE:
-                if gemlite_is_available is False:
-                    raise NotImplementedError(
-                        "GemLite is required for this setting. Make sure gemlite is installed: https://github.com/mobiusml/gemlite"
-                    )
+                try:
+                    layer.quant_layer = gemlite.A16Wn(device=device).from_hqqlinear(layer.quant_layer)
+                except Exception:
+                    logger.error(f'Failed A16Wn gemlite conversion, using Pytorch backend. weights.shape={shape}') 
 
-            if (
-                layer.input_size_per_partition % GemLiteLinear.MIN_SIZE == 0
-                and layer.output_size_per_partition % GemLiteLinear.MIN_SIZE == 0
-            ):
-                layer.quant_layer = gemlite.A16Wn(device=device).from_hqqlinear(
-                    layer.quant_layer
-                )
+        #Clean-up
+        torch.cuda.empty_cache()
 
         # Compile
         if HQQOnTheFlyMethod.enable_compile:
-            layer.quant_layer.forward = torch.compile(
-                layer.quant_layer.forward, **COMPILE_OPTIONS
-            )
+            layer.quant_layer.forward = torch.compile(layer.quant_layer.forward, **COMPILE_OPTIONS)
 
         # Cleanup
         del layer.weight, tmp_linear
