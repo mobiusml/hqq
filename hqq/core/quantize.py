@@ -122,7 +122,10 @@ class Quantizer:
         min_max = [min_v, max_v]
 
         # Note: here we work with the inverse of the scale to avoid division and quantize instead via W*scale + zero, the scale is inverted later on.
-        scale = (max_v / (_max - _min)).clamp(max=2e4)  # clamp to avoid half-precision problems
+        denom = (_max - _min)
+        scale = (max_v / denom)  
+        scale = torch.where(denom.abs() <= 1e-4, torch.full_like(scale, 1.0), scale) #Avoid small denom values
+        scale = scale.clamp(max=2e4) # clamp to avoid half-precision problems
         zero = -_min * scale
 
         # Round zero as in: https://github.com/casper-hansen/AutoAWQ/blob/main/awq/quantize/quantizer.py#L42C9-L42C14
