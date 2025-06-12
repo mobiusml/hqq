@@ -454,11 +454,12 @@ class HQQLinear(nn.Module):
                 )
             )
 
-        if self.del_orig:   
-            for name, param in self.linear_layer.named_parameters():
-                setattr(self.linear_layer, name, None)
-            del self.linear_layer
-        torch.cuda.empty_cache()
+            #Clear-up parameters
+            if self.del_orig:
+                for name, param in self.linear_layer.named_parameters():
+                    setattr(self.linear_layer, name, None)
+                del self.linear_layer
+                torch.cuda.empty_cache()
 
     @classmethod
     def from_weights(
