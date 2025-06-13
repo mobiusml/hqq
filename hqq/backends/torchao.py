@@ -263,7 +263,7 @@ class HQQLinearTorchWeightOnlynt4(torch.nn.Module):
         origin_x_size = x.size()
         x = x.reshape(-1, origin_x_size[-1])
         c = torch.ops.aten._weight_int4pack_mm(
-            x.to(self.device), self.weight_int4pack, self.groupsize, self.scales_and_zeros
+            x.to(self.device).contiguous(), self.weight_int4pack, self.groupsize, self.scales_and_zeros
         )
         new_shape = origin_x_size[:-1] + (self.out_features,)
         c = c.reshape(new_shape)
