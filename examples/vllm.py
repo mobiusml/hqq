@@ -1,4 +1,5 @@
 #!pip install git+https://github.com/mobiusml/gemlite
+#VLLM_USE_V1=0 TRITON_PRINT_AUTOTUNING=1 ipython3 ..
 #############################################################
 import torch
 from vllm import LLM
