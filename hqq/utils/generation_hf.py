@@ -350,7 +350,7 @@ class HFGenerator:
         _ = self.generate(prompt, print_tokens=False)
 
         #Enable 
-        self.gen_next_token = self.gen_next_token_withgraph_v2
+        self.gen_next_token = self.gen_next_token_withgraph_v1
         self.do_capture_graph = True
 
         #Capture
@@ -360,43 +360,49 @@ class HFGenerator:
 
     def gen_next_token_withgraph_v1(self, next_token):
         self.static_input.copy_(next_token)
+        self.cache_position += 1
 
         if(self.do_capture_graph):
-            #warm-up
-            for _ in range(3):
-                with sdpa_kernel([SDPBackend.MATH]):
-                    self.static_output = self.decode_one_token(
-                        self.static_input.clone(),
-                        None,
-                        cache_position=self.cache_position + 1,
-                        past_key_values=self.past_key_values,
-                        temperature=self.temperature,
-                        top_k=self.top_k,
-                    )
-                torch.cuda.synchronize()
+            self.stream = torch.cuda.Stream()
+            torch.cuda.synchronize()
 
+            #Warm-up
+            with torch.cuda.stream(self.stream):
+                for _ in range(3):
+                    with sdpa_kernel([SDPBackend.MATH]):
+                        _ = self.decode_one_token(
+                            self.static_input,
+                            None,
+                            cache_position=self.cache_position,
+                            past_key_values=self.past_key_values,
+                            temperature=self.temperature,
+                            top_k=self.top_k,
+                        )
+                torch.cuda.synchronize()
+  
             #Capture
             self.cuda_graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(self.cuda_graph):
+            with torch.cuda.stream(self.stream):
+                self.cuda_graph.capture_begin()
                 with sdpa_kernel([SDPBackend.MATH]):
-                    self.static_output = self.decode_one_token(
-                        self.static_input.clone(),
+                    out = self.decode_one_token(
+                        self.static_input,
                         None,
-                        cache_position=self.cache_position + 1,
+                        cache_position=self.cache_position,
                         past_key_values=self.past_key_values,
                         temperature=self.temperature,
                         top_k=self.top_k,
                     )
+                    self.static_output.copy_(out)
+                self.cuda_graph.capture_end()
             torch.cuda.synchronize()
             
             #Turn-off
             self.do_capture_graph = False
-
         else:
             self.cuda_graph.replay()
 
         next_token = self.static_output
-        self.cache_position += 1
         self.generated_ids[:, self.cache_position] = next_token.int()
         return next_token
 
