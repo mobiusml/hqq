@@ -211,8 +211,8 @@ class HFGenerator:
         self.is_compiled = True
 
     # torch.compile needs about 5-10 runs to warmup
-    def warmup(self):
-        for prompt in WARMUP_PROMPTS:
+    def warmup(self, max_samples=-1):
+        for prompt in WARMUP_PROMPTS[:max_samples if max_samples>0 else len(WARMUP_PROMPTS)]:
             self.generate(prompt, print_tokens=False)
         return self
 
@@ -345,16 +345,16 @@ class HFGenerator:
     def gen_next_token(self, next_token):
         return self.gen_next_token_raw(next_token)
 
-    def enable_cuda_graph(self, prompt = "Write an essay about large language models."):
+    def enable_cuda_graph(self):
         #Warm-up
-        _ = self.generate(prompt, print_tokens=False)
+        self.warmup(1)
 
         #Enable 
         self.gen_next_token = self.gen_next_token_withgraph_v1
         self.do_capture_graph = True
 
         #Capture
-        _ = self.generate(prompt, print_tokens=False)
+        self.warmup(1)
 
         return self
 
@@ -474,6 +474,7 @@ class HFGenerator:
             if print_tokens:
                 output_text_len = self.print_current_token(output_text_len)
 
+        torch.cuda.synchronize()
         input_tokens  = self.generated_ids[0, : self.begin_gen_position].cpu()
         output_tokens = self.generated_ids[0, self.begin_gen_position : self.cache_position].cpu()
         output_text   = self.tokenizer.decode(output_tokens)
