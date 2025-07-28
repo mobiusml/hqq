@@ -682,7 +682,9 @@ class HQQOnTheFlyMethod(LinearMethodBase):
         if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.MARLIN:
             raise NotImplementedError("MARLIN backend is not implemented yet for on-the-fly quantization.")
 
-        if W_nbits == 8 and group_size is None:
+        processor_args = {'device': device, 'dtype':self.params_dtype}
+
+        if W_nbits == 8:
             layer.quant_layer = None
 
             if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.GEMLITE:
@@ -691,42 +693,72 @@ class HQQOnTheFlyMethod(LinearMethodBase):
                 tmp_linear.weight.data = layer.weight
                 tmp_linear.in_features = layer.weight.shape[1]
                 tmp_linear.out_features = layer.weight.shape[0]
-
+        
                 if "dynamic" in quant_mode:
-                    processor = gemlite.A8W8_int8_dynamic
-                    if quant_mode == "dynamic_fp8":
-                        processor = gemlite.A8W8_fp8_dynamic
+                    processor = gemlite.A8W8_int8_dynamic #default: A8W8 int8
+                    if 'fp8' in quant_mode:
+                        processor = gemlite.A8W8_fp8_dynamic #A8W8 fp8
+                    if 'mxfp8' in quant_mode:
+                        processor_args['post_scale'] = True if (group_size is None) else False #MXPF8 x MXPF8
+                        processor = gemlite.A8W8_MXFP_dynamic
                 else:
-                    processor = gemlite.A16W8
-
+                    if('mxfp8' in quant_mode): #A16W8 - weight-only
+                        processor = gemlite.A16W8_MXFP
+                    else:
+                        processor = gemlite.A16W8 
                 try:
-                    layer.quant_layer = processor(device=device).from_linear(tmp_linear)
+                    layer.quant_layer = processor(**processor_args).from_linear(tmp_linear)
                 except Exception:
-                    logger.error(f'Failed A8W8 gemlite conversion, using Pytorch backend. weights.shape={shape}') 
+                    logger.error(f'Failed gemlite conversion, using Pytorch backend. weights.shape={shape}, processor:{processor}') 
 
             if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.PYTORCH or (layer.quant_layer is None):
                 layer.quant_layer = HQQLinear.from_weights(
                     layer.weight,
                     bias=None,
-                    quant_config=BaseQuantizeConfig(nbits=8, group_size=None, axis=1),
+                    quant_config=BaseQuantizeConfig(nbits=W_nbits, group_size=group_size, axis=1),
                     compute_dtype=self.params_dtype,
                     device=device,
                 )
 
-        else:
+        elif W_nbits == 4:
             # Quantized weights
-            layer.weight = layer.weight.to(device).contiguous()
-            layer.quant_layer = HQQLinear.from_weights(
-                layer.weight,
-                bias=None,
-                quant_config=BaseQuantizeConfig(nbits=W_nbits, group_size=group_size, axis=1),
-                compute_dtype=self.params_dtype,
-                device=device,
-            )
+            if('mxfp' in quant_mode or 'nvfp' in quant_mode):
+                if DEFAULT_VLLM_HQQ_BACKEND != VLLM_HQQ_BACKEND.GEMLITE:
+                    raise NotImplementedError('Unsupported backend for MXFP/NVFP')
+
+                tmp_linear = torch.nn.Linear(1, 1, bias=False)
+                tmp_linear.weight.data = layer.weight
+                tmp_linear.in_features = layer.weight.shape[1]
+                tmp_linear.out_features = layer.weight.shape[0]
+                layer.quant_layer = tmp_linear
+
+                if('mxfp8' in quant_mode):
+                    processor = A8W4_MXFP_dynamic #MXFP8 x MXFP4
+                if('mxfp4' in quant_mode):
+                    if('dynamic' in quant_mode): #MXFP4 x MXPF4
+                        processor = gemlite.A4W4_MXFP_dynamic
+                    else:
+                        processor = gemlite.A16W4_MXFP #MXFP4 weight-only
+                elif('nvfp4' in quant_mode):
+                    processor = gemlite.A4W4_NVFP_dynamic
+
+            else: #INT mode vvia HQQ
+                layer.weight = layer.weight.to(device).contiguous()
+                layer.quant_layer = HQQLinear.from_weights(
+                    layer.weight,
+                    bias=None,
+                    quant_config=BaseQuantizeConfig(nbits=W_nbits, group_size=group_size, axis=1),
+                    compute_dtype=self.params_dtype,
+                    device=device,
+                )
+                processor = gemlite.A16Wn
 
             if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.GEMLITE:
                 try:
-                    layer.quant_layer = gemlite.A16Wn(device=device).from_hqqlinear(layer.quant_layer)
+                    if(isinstance(layer.quant_layer, HQQLinear)):
+                        layer.quant_layer = processor(**processor_args).from_hqqlinear(layer.quant_layer)
+                    else:
+                        layer.quant_layer = processor(**processor_args).from_linear(layer.quant_layer)
                 except Exception:
                     logger.error(f'Failed A16Wn gemlite conversion, using Pytorch backend. weights.shape={shape}') 
 
