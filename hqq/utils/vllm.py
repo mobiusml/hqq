@@ -695,17 +695,17 @@ class HQQOnTheFlyMethod(LinearMethodBase):
                 tmp_linear.out_features = layer.weight.shape[0]
         
                 if "dynamic" in quant_mode:
-                    processor = gemlite.A8W8_int8_dynamic #default: A8W8 int8
+                    processor = gemlite.helper.A8W8_int8_dynamic #default: A8W8 int8
                     if 'fp8' in quant_mode:
-                        processor = gemlite.A8W8_fp8_dynamic #A8W8 fp8
+                        processor = gemlite.helper.A8W8_fp8_dynamic #A8W8 fp8
                     if 'mxfp8' in quant_mode:
                         processor_args['post_scale'] = True if (group_size is None) else False #MXPF8 x MXPF8
-                        processor = gemlite.A8W8_MXFP_dynamic
+                        processor = gemlite.helper.A8W8_MXFP_dynamic
                 else:
                     if('mxfp8' in quant_mode): #A16W8 - weight-only
-                        processor = gemlite.A16W8_MXFP
+                        processor = gemlite.helper.A16W8_MXFP
                     else:
-                        processor = gemlite.A16W8 
+                        processor = gemlite.helper.A16W8 
                 try:
                     layer.quant_layer = processor(**processor_args).from_linear(tmp_linear)
                 except Exception:
@@ -733,14 +733,14 @@ class HQQOnTheFlyMethod(LinearMethodBase):
                 layer.quant_layer = tmp_linear
 
                 if('mxfp8' in quant_mode):
-                    processor = A8W4_MXFP_dynamic #MXFP8 x MXFP4
+                    processor = gemlite.helper.A8W4_MXFP_dynamic #MXFP8 x MXFP4
                 if('mxfp4' in quant_mode):
                     if('dynamic' in quant_mode): #MXFP4 x MXPF4
-                        processor = gemlite.A4W4_MXFP_dynamic
+                        processor = gemlite.helper.A4W4_MXFP_dynamic
                     else:
-                        processor = gemlite.A16W4_MXFP #MXFP4 weight-only
+                        processor = gemlite.helper.A16W4_MXFP #MXFP4 weight-only
                 elif('nvfp4' in quant_mode):
-                    processor = gemlite.A4W4_NVFP_dynamic
+                    processor = gemlite.helper.A4W4_NVFP_dynamic
 
             else: #INT mode vvia HQQ
                 layer.weight = layer.weight.to(device).contiguous()
@@ -751,7 +751,7 @@ class HQQOnTheFlyMethod(LinearMethodBase):
                     compute_dtype=self.params_dtype,
                     device=device,
                 )
-                processor = gemlite.A16Wn
+                processor = gemlite.helper.A16Wn
 
             if DEFAULT_VLLM_HQQ_BACKEND == VLLM_HQQ_BACKEND.GEMLITE:
                 try:
