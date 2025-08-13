@@ -142,16 +142,13 @@ We support external backends for faster inference with fused kernels. You can en
 from hqq.utils.patching import prepare_for_inference
 
 #Pytorch backend that makes the model compatible with fullgraph torch.compile: works with any settings
-#prepare_for_inference(model) 
-
-#Torchao's tiny_gemm backend (fastest): nbits=4, compute_dtype=bfloat16, axis=1
-prepare_for_inference(model, backend="torchao_int4") 
+#prepare_for_inference(model)
 
 #Gemlite backend: nbits=4/2/1, compute_dtype=float16, axis=1
-#prepare_for_inference(model, backend="gemlite") 
+prepare_for_inference(model, backend="gemlite") 
 
-#Bitblas backend: nbits=4/2, compute_dtype=float16, axis=1
-#prepare_for_inference(model, backend="bitblas") 
+#Torchao's tiny_gemm backend (fast for batch-size<4): nbits=4, compute_dtype=bfloat16, axis=1
+#prepare_for_inference(model, backend="torchao_int4") 
 ```
 Note that these backends only work with `axis=1`. Additional restrictions apply regarding the group-size values depending on the backend. You should expect ~158 tokens/sec with a Llama3-8B 4-bit quantized model on a 4090 RTX.
 
