@@ -1,5 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
-######################################################
 
 import torch
 from torch import Tensor

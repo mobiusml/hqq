@@ -1,5 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
-#####################################################
+
 import torch
 from torch import Tensor
 from ..core.quantize import Quantizer, HQQLinear, BaseQuantizeConfig
@@ -124,7 +125,10 @@ def recommended_inductor_config_setter():
     torch._inductor.config.triton.unique_kernel_names = True
     torch.set_float32_matmul_precision("high")
 
-def prepare_for_inference(model, allow_merge=False, backend="default", verbose=False):
+
+def prepare_for_inference(
+    model, allow_merge=False, backend="default", verbose=False
+):
     if backend == "torchao_int4":
         allow_merge = False
 
@@ -135,32 +139,40 @@ def prepare_for_inference(model, allow_merge=False, backend="default", verbose=F
 
     if backend == "gemlite" and (patch_hqq_to_gemlite is not None):
         if patch_hqq_to_gemlite is None:
-            raise RunTimeError('GemLite backend is not available. Check if gemlite is correctly installed if you want to use the GemLite backend (https://github.com/mobiusml/gemlite/).')
+            raise RunTimeError(
+                """
+                GemLite backend is not available. Check if gemlite is correctly installed if you want to use the GemLite backend (https://github.com/mobiusml/gemlite/).
+                """
+            )
         else:
             patch_linearlayers(model, patch_hqq_to_gemlite, verbose=verbose)
+
     if backend == "bitblas":
         if patch_hqq_to_bitblas is None:
-            raise RunTimeError('BitBlas backend is not available. Check if bitblas is correctly installed if you want to use the BitBlas backend (https://github.com/mobiusml/bitblas/).')
+            raise RunTimeError(
+                """
+                BitBlas backend is not available. Check if bitblas is correctly installed if you want to use the BitBlas backend (https://github.com/mobiusml/bitblas/).
+                """
+            )
         else:
             patch_linearlayers(model, patch_hqq_to_bitblas, verbose=verbose)
+
     if backend == "torchao_int4":
         patch_linearlayers(model, patch_hqq_to_aoint4, verbose=verbose)
         recommended_inductor_config_setter()
+
     if allow_merge:  # only compatible with symmetric quant kernels
         patch_linearlayers(
-            model, patch_merge_zeros_with_lora, {"z_shift": 8, "keep_lora": False},
+            model,
+            patch_merge_zeros_with_lora,
+            {"z_shift": 8, "keep_lora": False},
             verbose=verbose,
-        )       
-    if backend == "marlin":
-        if patch_hqq_to_bitblas is None:
-            raise RunTimeError('Marlin backend is not available. Check if marlin is correctly installed if you want to use the Marlin backend (https://github.com/IST-DASLab/marlin).')
-        else:
-            patch_linearlayers(model, patch_hqq_to_marlin, verbose=verbose)
-
-    cleanup()
+        )
 
     patch_linearlayers(
-        model, patch_add_weight_param, {"device": model.device, "dtype": model.dtype}
+        model,
+        patch_add_weight_param,
+        {"device": model.device, "dtype": model.dtype},
     )
     cleanup()
 
@@ -194,7 +206,7 @@ def patch_merge_zeros_with_lora(layer, patch_params={"z_shift": 8, "keep_lora": 
         s = layer.linear_layer.meta["scale"]
         u = (s * (-z + layer.z_shift)).flatten().view([1, -1])
 
-        ###########################################
+        
         if layer.keep_lora is False:
             A, B = layer.lora_A.data, layer.lora_B.data
             onz = torch.ones((shape[1], 1), device=u.device, dtype=u.dtype)
@@ -213,7 +225,7 @@ def patch_merge_zeros_with_lora(layer, patch_params={"z_shift": 8, "keep_lora": 
 
         else:
             layer.u = torch.nn.Parameter(u, requires_grad=False)
-        ###########################################
+        
         layer.linear_layer.meta["zero"] = 0.0
 
         torch.cuda.empty_cache()

@@ -1,4 +1,8 @@
-####################################################
+# SPDX-License-Identifier: Apache-2.0
+# Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
+
+#re-using some code from vllm Marlin-HQQ, see below.
+
 from typing import Any, Dict, List, Optional
 import torch
 import logging
@@ -53,6 +57,7 @@ def unpack_rows(
     num_output_cols: int,
     dtype: torch.dtype = torch.uint8,
 ) -> torch.Tensor:
+
     num_rows, num_cols = W_q_packed.shape
     elements_per_sample = num_output_rows // num_rows
 
@@ -71,16 +76,26 @@ try:
 
     gemlite_is_available = True
 
-    # #Faster gptq_pack
-    def gptq_pack(q_w: torch.Tensor, num_bits: int, size_k: int, size_n: int) -> torch.Tensor:
+    # Faster gptq_pack
+    def gptq_pack(
+        q_w: torch.Tensor, num_bits: int, size_k: int, size_n: int
+    ) -> torch.Tensor:
+
         q_w = q_w.cuda()
         out = gemlite.bitpack.pack_weights_over_rows_triton(q_w, num_bits, packing_bitwidth=32, transpose=False)[0]
         del q_w
         torch.cuda.empty_cache()
         return out
         
-    #Faster unpacking
-    def unpack_rows(W_q_packed: torch.Tensor, W_nbits: int, num_output_rows: int, num_output_cols: int, dtype: torch.dtype = torch.uint8) -> torch.Tensor:
+    # Faster unpacking
+    def unpack_rows(
+        W_q_packed: torch.Tensor,
+        W_nbits: int,
+        num_output_rows: int,
+        num_output_cols: int,
+        dtype: torch.dtype = torch.uint8,
+    ) -> torch.Tensor:
+        
         return gemlite.bitpack.unpack_over_rows_triton(W_q_packed, W_nbits, num_output_rows, dtype)
 
 except Exception as e:
@@ -161,8 +176,10 @@ class HQQMarlinPrequantizedConfig(HQQMarlinConfig):
     @classmethod
     def get_name(cls) -> str:
         return 'hqq_marlin'
-####################################################################################################################################
-####################################################################################################################################
+
+##############################################################################################
+#HQQBaseVLLMConfig / HQQBaseVLLMLinear
+##############################################################################################
 # Base HQQ/VLLM Linear method
 class HQQBaseVLLMConfig(QuantizationConfig):
     """Config class for HQQ"""
@@ -174,6 +191,7 @@ class HQQBaseVLLMConfig(QuantizationConfig):
         axis: int = 1,
         skip_modules: Optional[List[str]] = None,
     ) -> None:
+
         self.weight_bits = weight_bits
         self.group_size = group_size
         self.pack_factor = 32 // weight_bits  # pre-packed into int32 in GPTQ format
@@ -230,7 +248,6 @@ class HQQBaseVLLMConfig(QuantizationConfig):
             return HQQPytorchVLLMLinear(self)
         return None
 
-
 class HQQBaseVLLMLinear(LinearMethodBase):
     """Base HQQ Linear VLLM method"""
 
@@ -247,6 +264,7 @@ class HQQBaseVLLMLinear(LinearMethodBase):
         params_dtype: torch.dtype,
         **extra_weight_attrs,
     ) -> None:
+
         self.output_size_per_partition = sum(output_partition_sizes)
         self.input_size_per_partition = input_size_per_partition
 
@@ -256,7 +274,6 @@ class HQQBaseVLLMLinear(LinearMethodBase):
             input_size_per_partition // self.quant_config.group_size
         )
 
-        #######################################################################################
         # Transposed - GPTQ/GemLited packed
         W_q = HQQweightParameter(
             data=torch.empty(
@@ -297,7 +314,6 @@ class HQQBaseVLLMLinear(LinearMethodBase):
         )
         layer.register_parameter("scale", scale)
 
-        ########################################################################################
         setattr(
             layer,
             "current_shape",
@@ -340,8 +356,6 @@ class HQQBaseVLLMLinear(LinearMethodBase):
                 HQQEmptyParameter(data=torch.empty(0), weight_loader=weight_loader),
             )
 
-        #########################################################################################
-
     def unpack(self, layer, dtype):
         return unpack_rows(
             layer.W_q,
@@ -363,8 +377,9 @@ class HQQBaseVLLMLinear(LinearMethodBase):
         setattr(layer, "compute_dtype", layer.scale.dtype)
 
 
-####################################################################################################################################
-####################################################################################################################################
+##############################################################################################
+#HQQPytorchConfig / HQQPytorchVLLMLinear
+##############################################################################################
 # Pytorch
 class HQQPytorchConfig(HQQBaseVLLMConfig):
     """Config class for HQQ"""
@@ -450,8 +465,9 @@ class HQQPytorchVLLMLinear(HQQBaseVLLMLinear):
         return out
 
 
-####################################################################################################################################
-####################################################################################################################################
+##############################################################################################
+#HQQGemLiteConfig / HQQGemLiteVLLMLinear
+##############################################################################################
 # GemLite
 class HQQGemLiteConfig(HQQBaseVLLMConfig):
     """Config class for HQQ"""
@@ -541,9 +557,9 @@ class HQQGemLiteVLLMLinear(HQQBaseVLLMLinear):
 
         return out
 
-
-####################################################################################################################################
-####################################################################################################################################
+##############################################################################################
+#VLLM_HQQ_BACKEND
+##############################################################################################
 # Backends
 class VLLM_HQQ_BACKEND:
     MARLIN = HQQMarlinConfig
@@ -555,8 +571,9 @@ DEFAULT_VLLM_HQQ_BACKEND = VLLM_HQQ_BACKEND.GEMLITE
 COMPILE_OPTIONS = {}  # {"mode":"max-autotune-no-cudagraphs"}
 
 
-####################################################################################################################################
-####################################################################################################################################
+##############################################################################################
+#HQQOnTheFlyConfig
+##############################################################################################
 # On-the-fly quantization
 @register_quantization_config("hqq_onthefly")
 class HQQOnTheFlyConfig(QuantizationConfig):
@@ -648,8 +665,7 @@ class HQQOnTheFlyMethod(LinearMethodBase):
         self.params_dtype = params_dtype
 
         weight_loader = extra_weight_attrs.get("weight_loader", error_loader)
-        #######################################################################################
-
+        
         weight = HQQOnTheFlyweightParameter(
             data=torch.empty(
                 self.output_size_per_partition,
@@ -665,8 +681,6 @@ class HQQOnTheFlyMethod(LinearMethodBase):
         )
 
         layer.register_parameter("weight", weight)
-
-        #######################################################################################
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         global DEFAULT_VLLM_HQQ_BACKEND
@@ -787,8 +801,9 @@ class HQQOnTheFlyMethod(LinearMethodBase):
         return out
 
 
-####################################################################################################################################
-####################################################################################################################################
+##############################################################################################
+#Main patching functions
+##############################################################################################
 # Allows overriding a VLLM quant method with arbitrary configs
 def enable_vllm_hqq_quant():
     return 
@@ -853,9 +868,9 @@ def set_vllm_onthefly_hqq_quant(
     linear.LinearBase.__init__ = patched_init
 
 
-##################################################################################################################################
+##############################################################################################
 # Model specific patching
-
+##############################################################################################
 
 def patch_mixtral():
     import torch

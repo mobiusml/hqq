@@ -1,5 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
-#####################################################
 
 # Rewrite generate() to support torch.compile fullgraph.
 # https://gist.github.com/ArthurZucker/5dc54a3fb443e979fac437e5df7c800b
@@ -188,9 +188,18 @@ class HFGenerator:
 
     @torch.no_grad()
     def setup_cache(self):
-        self.past_key_values = StaticCache(
-            self.model.config, 1, self.cache_size, self.model.device, self.model.dtype
-        )
+        try:
+            self.past_key_values = StaticCache(
+                config=self.model.config,
+                max_batch_size=1,
+                max_cache_len=self.cache_size,
+                device=self.model.device,
+                dtype=self.model.dtype,
+            )
+        except:
+            self.past_key_values = StaticCache(
+                self.model.config, 1, self.cache_size, self.model.device, self.model.dtype
+            )
 
     @torch.no_grad()
     def reset_cache(self):
