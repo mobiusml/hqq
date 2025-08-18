@@ -1,5 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
-#####################################################
+
 import os
 import json
 import torch

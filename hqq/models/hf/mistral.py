@@ -1,9 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2023
-#####################################################
+
 from ..base import BasePatch
 from .base import BaseHQQHFModel
 from tqdm import tqdm
-
 
 # Patch functions
 class MistralPatch(BasePatch):
