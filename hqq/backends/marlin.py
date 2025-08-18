@@ -1,5 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
-#####################################################
+
 import torch
 import marlin
 from ..core.quantize import HQQLinear, Quantizer

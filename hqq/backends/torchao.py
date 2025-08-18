@@ -1,5 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
 # Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
-#####################################################
 
 # Makes HQQ 4-bit (axis=1) compatbile with torch.ops.aten._weight_int4pack_mm
 
