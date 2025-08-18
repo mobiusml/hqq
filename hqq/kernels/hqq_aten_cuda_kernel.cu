@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * Written by Dr. Hicham Badri @Mobius Labs GmbH - 2024
+ */
+
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
