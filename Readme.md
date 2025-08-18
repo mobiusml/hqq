@@ -194,15 +194,6 @@ quant_config = {'self_attn.q_proj':q4_config,
 You can use HQQ in <a href="https://github.com/vllm-project/vllm/">vllm</a>. Make sure to install <a href="https://github.com/mobiusml/gemlite/">GemLite</a> before using the backend.
 
 ```Python
-#Select the backend. We recommend using the GemLite backend which supports more settings
-from hqq.utils.vllm import set_vllm_hqq_backend, VLLM_HQQ_BACKEND
-#set_vllm_hqq_backend(backend=VLLM_HQQ_BACKEND.MARLIN)
-set_vllm_hqq_backend(backend=VLLM_HQQ_BACKEND.GEMLITE)
-#set_vllm_hqq_backend(backend=VLLM_HQQ_BACKEND.PYTORCH)
-
-#You can either load pre-quantized HQQ models directly (ending with "hqq_hf")
-llm = LLM(model="mobiuslabsgmbh/Llama-3.1-8B-Instruct_4bitgs64_hqq_hf", max_model_len=4096)
-
 #Or you can quantize on-the-fly
 from hqq.utils.vllm import set_vllm_onthefly_hqq_quant
 skip_modules = ['lm_head', 'visual', 'vision']
