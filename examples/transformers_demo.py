@@ -59,7 +59,7 @@ patch_model_for_compiled_runtime(model, tokenizer)
 prompt  = "Write an essay about large language models."
 inputs  = tokenizer.apply_chat_template([{"role":"user", "content":prompt}], tokenize=True, add_generation_prompt=True, return_tensors="pt", return_dict=True)
 outputs = model.generate(**inputs.to(model.device), max_new_tokens=1000, cache_implementation="static", pad_token_id=tokenizer.pad_token_id) 
-#print(tokenizer.decode(outputs[0])
+#print(tokenizer.decode(outputs[0]))
 
 ########################################################################
 #Save gemlite cache
